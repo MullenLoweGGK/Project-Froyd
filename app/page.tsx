@@ -308,15 +308,20 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-mono">
       {/* Header */}
-      <header className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between gap-4">
+      <header className="border-b border-zinc-800 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-base font-bold tracking-tight">LDZ Avatars</h1>
-          <p className="text-xs text-zinc-500 mt-0.5">Simulated patient · Educational simulation · SK</p>
+          <h1 className="text-sm sm:text-base font-bold tracking-tight">LDZ Avatars</h1>
+          <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 hidden sm:block">Simulated patient · Educational simulation · SK</p>
         </div>
         <StatusBadge status={status} />
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8 flex flex-col gap-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-8 flex flex-col gap-5 sm:gap-8">
+
+        {/* Video stream — first on mobile so avatar is immediately visible */}
+        <section>
+          <AvatarPanel ref={videoRef} status={status} />
+        </section>
 
         {/* Controls */}
         <section>
@@ -329,33 +334,34 @@ export default function Home() {
           />
         </section>
 
-        {/* Config inputs — locked while session is live */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { label: "Avatar ID", value: avatarId, onChange: setAvatarId, placeholder: "e.g. Anna_public_3_20240108" },
-            { label: "Knowledge Base ID", value: contextId, onChange: setContextId, placeholder: "Context / persona ID" },
-            { label: "Voice ID", value: voiceId, onChange: setVoiceId, placeholder: "Optional voice ID" },
-          ].map(({ label, value, onChange, placeholder }) => (
-            <label key={label} className="flex flex-col gap-1">
-              <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{label}</span>
-              <input
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                placeholder={placeholder}
-                disabled={!isEditable}
-                className="bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
-              />
-            </label>
-          ))}
-        </section>
-
-        {/* Video stream */}
-        <section>
-          <AvatarPanel ref={videoRef} status={status} />
-        </section>
+        {/* Config inputs — collapsed by default, unlocked only when idle */}
+        <details className="group">
+          <summary className="flex items-center gap-2 cursor-pointer list-none text-[10px] text-zinc-500 uppercase tracking-widest select-none">
+            <span className="transition-transform group-open:rotate-90">▶</span>
+            Session config
+          </summary>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: "Avatar ID", value: avatarId, onChange: setAvatarId, placeholder: "UUID" },
+              { label: "Knowledge Base ID", value: contextId, onChange: setContextId, placeholder: "UUID" },
+              { label: "Voice ID", value: voiceId, onChange: setVoiceId, placeholder: "UUID (optional)" },
+            ].map(({ label, value, onChange, placeholder }) => (
+              <label key={label} className="flex flex-col gap-1">
+                <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{label}</span>
+                <input
+                  value={value}
+                  onChange={(e) => onChange(e.target.value)}
+                  placeholder={placeholder}
+                  disabled={!isEditable}
+                  className="bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-base text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500 disabled:opacity-50"
+                />
+              </label>
+            ))}
+          </div>
+        </details>
 
         {/* Transcripts */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           <TranscriptPanel
             title="User transcript"
             entries={transcript}
@@ -370,23 +376,24 @@ export default function Home() {
           />
         </section>
 
-        {/* Session metadata */}
-        {sessionMeta && (
+        {/* Error panel — always visible when present */}
+        {error && (
           <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Session metadata</h3>
-            <pre className="bg-zinc-900 border border-zinc-700 rounded p-4 text-xs text-zinc-400 overflow-x-auto">
-              {JSON.stringify(sessionMeta, null, 2)}
-            </pre>
+            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-red-500 mb-2">Error</h3>
+            <div className="bg-red-950 border border-red-800 rounded p-4 text-sm text-red-300 break-all">
+              {error}
+            </div>
           </section>
         )}
 
-        {/* Fetched transcript */}
+        {/* Fetched transcript — collapsible */}
         {fetchedTranscript && (
-          <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
+          <details open>
+            <summary className="flex items-center gap-2 cursor-pointer list-none text-[10px] text-zinc-500 uppercase tracking-widest select-none mb-2">
+              <span>▶</span>
               Fetched transcript ({fetchedTranscript.entries?.length ?? 0} entries)
-            </h3>
-            <div className="space-y-1 mb-4">
+            </summary>
+            <div className="space-y-1 mb-4 mt-2">
               {(fetchedTranscript.entries ?? []).map((e, i) => (
                 <div key={i} className="flex gap-3 text-sm">
                   <span className={`shrink-0 w-12 text-xs font-semibold ${e.role === "user" ? "text-sky-500" : "text-indigo-400"}`}>
@@ -402,35 +409,43 @@ export default function Home() {
                 {JSON.stringify(fetchedTranscript, null, 2)}
               </pre>
             </details>
-          </section>
+          </details>
         )}
 
-        {/* Error panel */}
-        {error && (
-          <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-widest text-red-500 mb-2">Error</h3>
-            <div className="bg-red-950 border border-red-800 rounded p-4 text-sm text-red-300 break-all">
-              {error}
+        {/* Session metadata + debug log — collapsed by default on mobile */}
+        <details>
+          <summary className="flex items-center gap-2 cursor-pointer list-none text-[10px] text-zinc-500 uppercase tracking-widest select-none">
+            <span>▶</span>
+            Debug info
+          </summary>
+
+          <div className="mt-3 flex flex-col gap-4">
+            {sessionMeta && (
+              <div>
+                <h3 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 mb-2">Session metadata</h3>
+                <pre className="bg-zinc-900 border border-zinc-700 rounded p-3 text-xs text-zinc-400 overflow-x-auto">
+                  {JSON.stringify(sessionMeta, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            <div>
+              <h3 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 mb-2">Debug log</h3>
+              <div className="bg-zinc-900 border border-zinc-700 rounded p-3 h-48 overflow-y-auto space-y-px">
+                {debugLog.length === 0
+                  ? <p className="text-zinc-700 text-xs italic">No events yet.</p>
+                  : debugLog.map((line, i) => (
+                      <div key={i} className="text-xs text-zinc-500">{line}</div>
+                    ))
+                }
+              </div>
             </div>
-          </section>
-        )}
-
-        {/* Debug log */}
-        <section>
-          <h3 className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">Debug log</h3>
-          <div className="bg-zinc-900 border border-zinc-700 rounded p-3 h-48 overflow-y-auto space-y-px">
-            {debugLog.length === 0
-              ? <p className="text-zinc-700 text-xs italic">No events yet.</p>
-              : debugLog.map((line, i) => (
-                  <div key={i} className="text-xs text-zinc-500">{line}</div>
-                ))
-            }
           </div>
-        </section>
+        </details>
 
       </main>
 
-      <footer className="border-t border-zinc-800 px-6 py-3 text-[10px] text-zinc-700 text-center">
+      <footer className="border-t border-zinc-800 px-4 py-3 text-[10px] text-zinc-700 text-center">
         Educational simulation only · Not a medical device · Not a diagnostic tool
       </footer>
     </div>

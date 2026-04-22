@@ -16,11 +16,11 @@ export function ControlBar({ status, onStart, onStop, onFetchTranscript, session
   const canFetch = !!sessionId && (status === "stopped" || status === "disconnected" || status === "idle");
 
   return (
-    <div className="flex flex-wrap gap-3 items-center">
+    <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
       <button
         onClick={onStart}
         disabled={!isIdle}
-        className="px-5 py-2 rounded text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="col-span-1 min-h-[48px] px-5 py-3 rounded text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-600 active:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Start session
       </button>
@@ -28,7 +28,7 @@ export function ControlBar({ status, onStart, onStop, onFetchTranscript, session
       <button
         onClick={onStop}
         disabled={!isActive}
-        className="px-5 py-2 rounded text-sm font-semibold bg-red-800 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="col-span-1 min-h-[48px] px-5 py-3 rounded text-sm font-semibold bg-red-800 text-white hover:bg-red-700 active:bg-red-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Stop session
       </button>
@@ -36,7 +36,7 @@ export function ControlBar({ status, onStart, onStop, onFetchTranscript, session
       <button
         onClick={onFetchTranscript}
         disabled={!canFetch}
-        className="px-5 py-2 rounded text-sm font-semibold bg-zinc-700 text-zinc-200 hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="col-span-2 sm:col-span-1 min-h-[48px] px-5 py-3 rounded text-sm font-semibold bg-zinc-700 text-zinc-200 hover:bg-zinc-600 active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Fetch transcript
       </button>
