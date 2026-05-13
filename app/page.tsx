@@ -7,6 +7,7 @@ import {
   SessionState,
   AgentEventsEnum,
   SessionDisconnectReason,
+  VoiceChatEvent,
 } from "@heygen/liveavatar-web-sdk";
 
 import { AvatarPanel } from "@/components/AvatarPanel";
@@ -46,6 +47,7 @@ export default function Home() {
   const [avatarChunk, setAvatarChunk] = useState("");
   const [fetchedTranscript, setFetchedTranscript] = useState<TranscriptResponse | null>(null);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [micMuted, setMicMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [lastAvatarText, setLastAvatarText] = useState("");
 
@@ -120,6 +122,7 @@ export default function Home() {
     }
 
     sessionRef.current = null;
+    setMicMuted(false);
     const endedAt = new Date().toISOString();
 
     setSessionMeta((prev) => {
@@ -134,6 +137,20 @@ export default function Home() {
     log("Session stopped.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transcript]);
+
+  const toggleMic = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session) return;
+    try {
+      if (session.voiceChat.isMuted) {
+        await session.voiceChat.unmute();
+      } else {
+        await session.voiceChat.mute();
+      }
+    } catch (err) {
+      log(`Mic toggle failed: ${String(err)}`);
+    }
+  }, []);
 
   const startSession = useCallback(async () => {
     setError(null);
@@ -202,6 +219,16 @@ export default function Home() {
       language: "sk",
       startedAt: now,
       sandbox: process.env.NEXT_PUBLIC_USE_SANDBOX === "true",
+    });
+
+    // Microphone mute/unmute events
+    session.voiceChat.on(VoiceChatEvent.MUTED, () => {
+      setMicMuted(true);
+      log("Microphone muted.");
+    });
+    session.voiceChat.on(VoiceChatEvent.UNMUTED, () => {
+      setMicMuted(false);
+      log("Microphone unmuted.");
     });
 
     // Session-level events
@@ -357,6 +384,8 @@ export default function Home() {
             onStart={startSession}
             onStop={stopSession}
             onFetchTranscript={fetchTranscript}
+            onToggleMic={toggleMic}
+            micMuted={micMuted}
             sessionId={sessionMeta?.sessionId ?? null}
           />
         </section>

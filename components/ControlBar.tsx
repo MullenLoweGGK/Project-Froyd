@@ -7,10 +7,12 @@ interface ControlBarProps {
   onStart: () => void;
   onStop: () => void;
   onFetchTranscript: () => void;
+  onToggleMic: () => void;
+  micMuted: boolean;
   sessionId: string | null;
 }
 
-export function ControlBar({ status, onStart, onStop, onFetchTranscript, sessionId }: ControlBarProps) {
+export function ControlBar({ status, onStart, onStop, onFetchTranscript, onToggleMic, micMuted, sessionId }: ControlBarProps) {
   const isActive = status === "ready" || status === "user-speaking" || status === "avatar-speaking" || status === "connecting";
   const isIdle = status === "idle" || status === "stopped" || status === "disconnected" || status === "error";
   const canFetch = !!sessionId && (status === "stopped" || status === "disconnected" || status === "idle");
@@ -31,6 +33,19 @@ export function ControlBar({ status, onStart, onStop, onFetchTranscript, session
         className="col-span-1 min-h-[48px] px-5 py-3 rounded text-sm font-semibold bg-red-800 text-white hover:bg-red-700 active:bg-red-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         Stop session
+      </button>
+
+      <button
+        onClick={onToggleMic}
+        disabled={!isActive}
+        title={micMuted ? "Unmute microphone" : "Mute microphone"}
+        className={`col-span-1 min-h-[48px] px-5 py-3 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+          micMuted
+            ? "bg-amber-700 text-white hover:bg-amber-600 active:bg-amber-800"
+            : "bg-zinc-600 text-zinc-100 hover:bg-zinc-500 active:bg-zinc-700"
+        }`}
+      >
+        {micMuted ? "Unmute mic" : "Mute mic"}
       </button>
 
       <button
