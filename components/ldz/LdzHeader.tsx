@@ -5,6 +5,8 @@ export function LdzHeader() {
   return (
     <header className="ldz-header">
       <div className="ldz-header__inner">
+        <p className="ldz-header__title">Projekt Froyd</p>
+
         <a
           href={LDZ_HOME_URL}
           className="ldz-header__brand"
@@ -19,8 +21,6 @@ export function LdzHeader() {
             priority
           />
         </a>
-
-        <p className="ldz-header__title">Project Froyd</p>
       </div>
     </header>
   );

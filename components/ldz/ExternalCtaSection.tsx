@@ -1,11 +1,10 @@
 import { froydContent } from "@/lib/ldz-content";
 
 /**
- * Merged lower band: challenge copy + course CTA on the orange case graphic.
+ * Course CTA band on navy — intro copy + course CTA.
  */
 export function ExternalCtaSection() {
   const {
-    challengeHeadline,
     challengeParagraphs,
     courseHeadline,
     courseParagraphs,
@@ -17,12 +16,10 @@ export function ExternalCtaSection() {
     <section
       id="kurz"
       className="ldz-info-cta"
-      aria-labelledby="challenge-heading"
+      aria-labelledby="course-cta-heading"
     >
-      <div className="ldz-info-cta__bg" aria-hidden="true" />
       <div className="ldz-container ldz-info-cta__inner">
         <div className="ldz-info-cta__block">
-          <h2 id="challenge-heading">{challengeHeadline}</h2>
           {challengeParagraphs.map((p) => (
             <p key={p}>{p}</p>
           ))}

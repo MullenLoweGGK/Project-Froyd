@@ -3,6 +3,7 @@
 import Image from "next/image";
 import type { AvatarScenario } from "@/lib/avatar-scenarios";
 import { isScenarioReady } from "@/lib/avatar-scenarios";
+import { froydContent } from "@/lib/ldz-content";
 import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 
 type Props = {
@@ -23,8 +24,7 @@ export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Prop
           <Image
             src={scenario.image}
             alt={`Portrét — ${scenario.name}`}
-            width={764}
-            height={1024}
+            fill
             className="ldz-scenario-card__photo"
             sizes="(max-width: 960px) 26rem, 33vw"
           />
@@ -57,6 +57,10 @@ export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Prop
         >
           {ready ? scenario.ctaLabel : `${scenario.ctaLabel}`}
         </button>
+
+        <p className="ldz-scenario-card__disclosure">
+          {froydContent.aiDisclosure.note}
+        </p>
 
         {!ready && scenario.quote ? (
           <p className="ldz-scenario-card__soon" role="status">

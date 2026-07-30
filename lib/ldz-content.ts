@@ -17,11 +17,14 @@ export const froydContent = {
     description:
       "Porozprávajte sa s AI avatarmi Ligy za duševné zdravie. Položte tri otázky a skúste odhaliť, čo človek prežíva. Vzdelávacia simulácia — nie diagnostický nástroj.",
   },
-  /** Merged lower band: challenge + course CTA (case-board layout) */
+  /** Challenge headline sits above avatar cards; course CTA is the navy band */
   infoCta: {
     challengeHeadline: "Dokážete spoznať, čo ich trápi?",
     challengeParagraphs: [
-      "Nie všetky duševné problémy sú viditeľné na prvý pohľad. Niekedy však veľa prezradí aj obyčajný rozhovor. Porozprávajte sa s jedným z našich AI avatarov. Položte mu tri otázky a skúste odhaliť, čo prežíva. AI avatar vám umožní skúšať, robiť chyby aj pýtať sa citlivé otázky v bezpečnom prostredí. Bez strachu, že niekomu ublížite.",
+      "Nie všetky duševné problémy sú viditeľné na prvý pohľad. Niekedy však veľa prezradí aj obyčajný rozhovor. Na Slovensku je pritom duševné zdravie stále témou, o ktorej sa mnohí ostýchajú hovoriť. Zo strachu, hanby alebo jednoducho preto, že nevedia, ako začať.",
+      "Preto sme vytvorili Projekt FROYD - AI avatarov, ktorí dokonale imitujú rôzne duševné problémy.",
+      "AI avatar vám umožní skúšať, robiť chyby alebo sa pýtať citlivé otázky v bezpečnom prostredí.",
+      "Bez strachu, že niekomu ublížite.",
     ],
     courseHeadline: "Chcete vedieť viac?",
     courseParagraphs: [
@@ -33,6 +36,6 @@ export const froydContent = {
   aiDisclosure: {
     label: "AI simulácia",
     note:
-      "Interagujete s AI avatárom vo vzdelávacej simulácii. Scenár nevyjadruje všetkých ľudí s daným prežívaním, nie je diagnostickým ani medicínskym nástrojom.",
+      "Interagujete s AI avatarom vo vzdelávacej simulácii. Scenár nevyjadruje všetkých ľudí s daným prežívaním, nie je diagnostickým ani medicínskym nástrojom.",
   },
 } as const;

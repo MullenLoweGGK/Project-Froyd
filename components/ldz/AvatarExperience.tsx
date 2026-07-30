@@ -4,8 +4,8 @@ import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AvatarScenario } from "@/lib/avatar-scenarios";
 import { PUBLIC_AVATAR_SCENARIOS } from "@/lib/avatar-scenarios";
+import { froydContent } from "@/lib/ldz-content";
 import { AvatarScenarioCard } from "@/components/ldz/AvatarScenarioCard";
-import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 
 const AvatarModal = dynamic(
   () => import("@/components/ldz/AvatarModal").then((m) => m.AvatarModal),
@@ -27,11 +27,13 @@ export function AvatarExperience() {
     <section
       id="scenare"
       className="ldz-section ldz-scenarios"
-      aria-label="Scenáre AI avatarov"
+      aria-labelledby="challenge-heading"
     >
       <div className="ldz-container">
         <div className="ldz-scenarios__intro">
-          <AiSimulationLabel />
+          <h2 id="challenge-heading" className="ldz-scenarios__headline">
+            {froydContent.infoCta.challengeHeadline}
+          </h2>
         </div>
 
         <div className="ldz-scenarios__grid">

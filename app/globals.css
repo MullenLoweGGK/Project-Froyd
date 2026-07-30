@@ -203,7 +203,12 @@ body {
   font-size: clamp(1.25rem, 2.2vw + 0.85rem, 2.75rem);
   line-height: 1.15;
   letter-spacing: -0.02em;
-  text-align: right;
+  text-align: left;
+}
+
+.ldz-header__brand {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 @media (min-width: 1024px) {
@@ -232,13 +237,12 @@ body {
   color: var(--ldz-white);
 }
 
-.ldz-scenarios__intro .ldz-ai-label__badge {
-  background: rgba(255, 255, 255, 0.16);
+.ldz-scenarios__headline {
+  margin: 0;
   color: var(--ldz-white);
-}
-
-.ldz-scenarios__intro .ldz-ai-label__note {
-  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  line-height: 1.25;
 }
 
 .ldz-scenarios__grid {
@@ -266,24 +270,26 @@ body {
 }
 
 .ldz-scenario-card__portrait {
+  width: 100%;
   aspect-ratio: 3 / 4;
-  max-height: 420px;
   background: var(--ldz-soft-blue-tint);
   position: relative;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .ldz-scenario-card__photo {
-  width: 100%;
-  height: 100%;
   object-fit: cover;
   object-position: center top;
+  /* Avoid subpixel gaps against card edges */
+  transform: scale(1.02);
+  transform-origin: center top;
 }
 
 .ldz-scenario-card__avatar-placeholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 96px;
   height: 96px;
   border-radius: 50%;
@@ -333,6 +339,13 @@ body {
   font-style: italic;
 }
 
+.ldz-scenario-card__disclosure {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgba(12, 61, 122, 0.72);
+}
+
 .ldz-scenario-card__soon {
   margin: 0;
   font-size: 0.875rem;
@@ -377,22 +390,14 @@ body {
   box-shadow: 0 2px 8px rgba(10, 31, 77, 0.12);
 }
 
-/* ─── Merged info + course CTA (orange case graphic) ────────────── */
+/* ─── Course CTA (navy band) ───────────────────────────────────── */
 
 .ldz-info-cta {
   position: relative;
   overflow: hidden;
   color: var(--ldz-white);
+  background: var(--ldz-case-navy);
   padding-block: clamp(2.5rem, 5vw, 4.5rem);
-}
-
-.ldz-info-cta__bg {
-  position: absolute;
-  inset: 0;
-  background-color: var(--ldz-orange);
-  background-image: url("/ldz/intro-bg.jpg");
-  background-size: cover;
-  background-position: center;
 }
 
 .ldz-info-cta__inner {
@@ -422,18 +427,30 @@ body {
   margin-top: 0.5rem;
 }
 
-/* ─── Footer ───────────────────────────────────────────────────── */
+/* ─── Footer (orange case graphic) ─────────────────────────────── */
 
 .ldz-footer {
-  background: var(--ldz-case-navy);
+  position: relative;
+  overflow: hidden;
+  background: var(--ldz-orange);
   color: var(--ldz-white);
   padding-top: clamp(2.5rem, 6vw, 5rem);
   margin-top: auto;
 }
 
+.ldz-footer__bg {
+  position: absolute;
+  inset: 0;
+  background-color: var(--ldz-orange);
+  background-image: url("/ldz/intro-bg.jpg");
+  background-size: cover;
+  background-position: center;
+}
+
 .ldz-footer__inner {
+  position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
   gap: 2.5rem;
   padding-bottom: 2.5rem;
 }
@@ -447,7 +464,7 @@ body {
 .ldz-footer__tag {
   margin: 0 0 1rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .ldz-footer__disclosure {
@@ -455,44 +472,42 @@ body {
   font-size: 0.875rem;
   line-height: 1.5;
   max-width: 32rem;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.ldz-footer__links {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.ldz-footer__links a {
-  color: var(--ldz-white);
-  font-weight: 500;
-  font-size: 1rem;
-  line-height: 1.75;
-  text-decoration: none;
-  transition: color 0.22s ease;
-}
-
-.ldz-footer__links a:hover,
-.ldz-footer__links a:focus-visible {
-  color: var(--ldz-orange);
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .ldz-footer__bar {
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
   padding: 1.25rem 0 1.5rem;
   font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ldz-footer__bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .ldz-footer__bar p {
   margin: 0;
 }
 
-@media (max-width: 767px) {
-  .ldz-footer__inner {
-    grid-template-columns: 1fr;
-  }
+.ldz-footer__site-link {
+  margin-left: auto;
+  color: var(--ldz-white);
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.22s ease;
+}
+
+.ldz-footer__site-link:hover,
+.ldz-footer__site-link:focus-visible {
+  opacity: 0.85;
+  text-decoration: underline;
 }
 
 /* ─── Modal / avatar experience ────────────────────────────────── */
