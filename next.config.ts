@@ -6,6 +6,18 @@ const nextConfig: NextConfig = {
     "@heygen/liveavatar-web-sdk",
     "@heygen/streaming-avatar",
   ],
+  turbopack: {
+    root: process.cwd(),
+  },
+  async redirects() {
+    return [
+      {
+        source: "/froyd",
+        destination: "/",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

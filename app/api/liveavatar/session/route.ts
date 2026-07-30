@@ -18,10 +18,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { avatarId, contextId, voiceId, language } = parsed.data;
+  const { avatarId, contextId, voiceId, language, isSandbox } = parsed.data;
 
   try {
-    const result = await createLiveAvatarSession({ avatarId, contextId, voiceId, language });
+    const result = await createLiveAvatarSession({
+      avatarId,
+      contextId,
+      voiceId,
+      language,
+      isSandbox,
+    });
     console.log(`[session] Created session ${result.sessionId} for avatar ${avatarId}`);
     return NextResponse.json({
       sessionToken: result.sessionToken,

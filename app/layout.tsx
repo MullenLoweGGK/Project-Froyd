@@ -1,10 +1,13 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Poppins, Geist_Mono } from "next/font/google";
+import { froydContent } from "@/lib/ldz-content";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const poppins = Poppins({
+  variable: "--font-poppins",
+  subsets: ["latin", "latin-ext"],
+  weight: ["300", "400", "500", "700"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -12,15 +15,45 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const shouldNoIndex =
+  process.env.VERCEL_ENV === "preview" ||
+  process.env.NEXT_PUBLIC_NOINDEX === "true";
+
+function resolveSiteUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) return configured;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 export const metadata: Metadata = {
-  title: "Project Froyd — Simulated Patient",
-  description: "Educational simulation of a clinical patient avatar. Not a medical or diagnostic tool.",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
+  metadataBase: new URL(resolveSiteUrl()),
+  title: froydContent.meta.title,
+  description: froydContent.meta.description,
+  robots: shouldNoIndex ? { index: false, follow: false } : { index: true, follow: true },
+  openGraph: {
+    title: froydContent.meta.title,
+    description: froydContent.meta.description,
+    locale: "sk_SK",
+    type: "website",
+    images: [
+      {
+        url: "/ldz/hero-illustration.png",
+        width: 1200,
+        height: 425,
+        alt: "Liga za duševné zdravie — FROYD",
+      },
+    ],
   },
+  icons: {
+    icon: "/ldz/favicon.ico",
+    apple: "/ldz/icon.svg",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -31,9 +64,9 @@ export default function RootLayout({
   return (
     <html
       lang="sk"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${poppins.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
   );
 }
