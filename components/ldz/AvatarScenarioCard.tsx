@@ -37,7 +37,20 @@ export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Prop
       </div>
 
       <div className="ldz-scenario-card__body">
-        <h3 className="ldz-scenario-card__name">{scenario.name}</h3>
+        <h3 className="ldz-scenario-card__name">
+          {scenario.nameImage ? (
+            <Image
+              src={scenario.nameImage}
+              alt={scenario.name}
+              width={775}
+              height={368}
+              className="ldz-scenario-card__name-badge"
+              sizes="(max-width: 960px) 14rem, 18vw"
+            />
+          ) : (
+            scenario.name
+          )}
+        </h3>
         {scenario.quote ? (
           <blockquote className="ldz-scenario-card__quote">
             <p>„{scenario.quote.replace(/^"|"$/g, "")}“</p>

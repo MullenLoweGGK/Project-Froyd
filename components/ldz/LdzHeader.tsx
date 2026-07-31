@@ -5,7 +5,16 @@ export function LdzHeader() {
   return (
     <header className="ldz-header">
       <div className="ldz-header__inner">
-        <p className="ldz-header__title">Projekt Froyd</p>
+        <p className="ldz-header__title">
+          <Image
+            src="/ldz/logo-froyd.png"
+            alt="Projekt Froyd"
+            width={1024}
+            height={313}
+            className="ldz-header__title-logo"
+            priority
+          />
+        </p>
 
         <a
           href={LDZ_HOME_URL}

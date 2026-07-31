@@ -12,6 +12,8 @@ export type AvatarScenario = {
   contextId: string;
   voiceId?: string;
   image?: string;
+  /** Speech-bubble nameplate under the portrait */
+  nameImage?: string;
   label?: string;
   /** Portrait interaction as specified in content doc */
   aspect: "9:16";
@@ -73,6 +75,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     contextId: evaContextId,
     voiceId: evaVoiceId || undefined,
     image: "/ldz/avatars/eva.jpg",
+    nameImage: "/ldz/avatars/name-eva.png",
     aspect: "9:16",
     available: Boolean(evaAvatarId),
     label: "AI simulácia",
@@ -91,6 +94,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     contextId: peterContextId,
     voiceId: peterVoiceId || undefined,
     image: "/ldz/avatars/peter.jpg",
+    nameImage: "/ldz/avatars/name-peter.png",
     aspect: "9:16",
     available: Boolean(peterAvatarId),
     label: "AI simulácia",
@@ -108,6 +112,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     contextId: tomasContextId,
     voiceId: tomasVoiceId || undefined,
     image: "/ldz/avatars/tomas.jpg",
+    nameImage: "/ldz/avatars/name-tomas.png",
     aspect: "9:16",
     available: Boolean(tomasAvatarId),
     label: "AI simulácia",
