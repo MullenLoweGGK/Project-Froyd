@@ -6,14 +6,18 @@ export function LdzHeader() {
     <header className="ldz-header">
       <div className="ldz-header__inner">
         <p className="ldz-header__title">
+          {/*
+            Serve the logo unoptimized: Next/Image's optimizer re-encodes PNGs
+            and softens sharp edges on the yellow PROJEKT pill.
+          */}
           <Image
             src="/ldz/logo-froyd.png"
             alt="Projekt Froyd"
-            width={838}
-            height={256}
+            width={1024}
+            height={313}
             className="ldz-header__title-logo"
             sizes="(max-width: 1024px) 18rem, 22rem"
-            quality={100}
+            unoptimized
             priority
           />
         </p>
