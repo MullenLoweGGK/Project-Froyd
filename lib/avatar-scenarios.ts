@@ -87,7 +87,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     title: "Peter",
     description:
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
-    quote: "Niektoré veci sa hovoria veľmi ťažko.",
+    quote: "O niektorých veciach sa mne osobne hovorí len veľmi ťažko.",
     ctaLabel: "Porozprávať sa s Petrom",
     // Placeholder — do not invent production IDs
     avatarId: peterAvatarId,
