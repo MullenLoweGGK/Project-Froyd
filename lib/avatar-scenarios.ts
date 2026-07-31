@@ -26,36 +26,39 @@ export type AvatarScenario = {
  * - Eva:   NEXT_PUBLIC_EVA_*   (falls back to legacy NEXT_PUBLIC_DEFAULT_*)
  * - Peter: NEXT_PUBLIC_PETER_*
  * - Tomáš: NEXT_PUBLIC_TOMAS_*
+ *
+ * IMPORTANT: Next.js only inlines NEXT_PUBLIC_* when accessed via a static
+ * `process.env.NEXT_PUBLIC_…` expression. Dynamic `process.env[key]` stays empty
+ * in the client bundle — never use that pattern here.
  */
-function envId(...keys: string[]): string {
-  for (const key of keys) {
-    const value = process.env[key]?.trim();
-    if (value) return value;
+function pickEnv(...values: Array<string | undefined>): string {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
   }
   return "";
 }
 
-const evaAvatarId = envId(
-  "NEXT_PUBLIC_EVA_AVATAR_ID",
-  "NEXT_PUBLIC_DEFAULT_AVATAR_ID"
+const evaAvatarId = pickEnv(
+  process.env.NEXT_PUBLIC_EVA_AVATAR_ID,
+  process.env.NEXT_PUBLIC_DEFAULT_AVATAR_ID
 );
-const evaContextId = envId(
-  "NEXT_PUBLIC_EVA_CONTEXT_ID",
-  "NEXT_PUBLIC_DEFAULT_CONTEXT_ID"
+const evaContextId = pickEnv(
+  process.env.NEXT_PUBLIC_EVA_CONTEXT_ID,
+  process.env.NEXT_PUBLIC_DEFAULT_CONTEXT_ID
 );
-const evaVoiceId = envId(
-  "NEXT_PUBLIC_EVA_VOICE_ID",
-  "NEXT_PUBLIC_DEFAULT_VOICE_ID"
+const evaVoiceId = pickEnv(
+  process.env.NEXT_PUBLIC_EVA_VOICE_ID,
+  process.env.NEXT_PUBLIC_DEFAULT_VOICE_ID
 );
 
-const peterAvatarId = envId("NEXT_PUBLIC_PETER_AVATAR_ID");
-const peterContextId = envId("NEXT_PUBLIC_PETER_CONTEXT_ID");
-const peterVoiceId = envId("NEXT_PUBLIC_PETER_VOICE_ID");
+const peterAvatarId = pickEnv(process.env.NEXT_PUBLIC_PETER_AVATAR_ID);
+const peterContextId = pickEnv(process.env.NEXT_PUBLIC_PETER_CONTEXT_ID);
+const peterVoiceId = pickEnv(process.env.NEXT_PUBLIC_PETER_VOICE_ID);
 
-const tomasAvatarId = envId("NEXT_PUBLIC_TOMAS_AVATAR_ID");
-const tomasContextId = envId("NEXT_PUBLIC_TOMAS_CONTEXT_ID");
-const tomasVoiceId = envId("NEXT_PUBLIC_TOMAS_VOICE_ID");
-
+const tomasAvatarId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_AVATAR_ID);
+const tomasContextId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_CONTEXT_ID);
+const tomasVoiceId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_VOICE_ID);
 export const AVATAR_SCENARIOS: AvatarScenario[] = [
   {
     id: "eva",
