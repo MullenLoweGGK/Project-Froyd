@@ -9,9 +9,11 @@ export function LdzHeader() {
           <Image
             src="/ldz/logo-froyd.png"
             alt="Projekt Froyd"
-            width={1024}
-            height={313}
+            width={838}
+            height={256}
             className="ldz-header__title-logo"
+            sizes="(max-width: 1024px) 18rem, 22rem"
+            quality={100}
             priority
           />
         </p>

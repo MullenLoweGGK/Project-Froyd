@@ -333,9 +333,9 @@ body {
 .ldz-scenario-card__name-badge {
   display: block;
   width: auto;
-  max-width: min(100%, 14rem);
+  max-width: min(100%, 11.2rem);
   height: auto;
-  max-height: 4.25rem;
+  max-height: 3.4rem;
   object-fit: contain;
   object-position: left center;
 }

@@ -42,10 +42,11 @@ export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Prop
             <Image
               src={scenario.nameImage}
               alt={scenario.name}
-              width={775}
-              height={368}
+              width={620}
+              height={294}
               className="ldz-scenario-card__name-badge"
-              sizes="(max-width: 960px) 14rem, 18vw"
+              sizes="11.2rem"
+              quality={100}
             />
           ) : (
             scenario.name
