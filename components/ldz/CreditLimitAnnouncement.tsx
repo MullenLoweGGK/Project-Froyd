@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  froydContent,
-  HELPLINE_LABEL,
-  HELPLINE_PHONE,
-} from "@/lib/ldz-content";
+import { froydContent } from "@/lib/ldz-content";
 
 type Props = {
   visible: boolean;
@@ -13,7 +9,12 @@ type Props = {
 export function CreditLimitAnnouncement({ visible }: Props) {
   if (!visible) return null;
 
-  const { title, message } = froydContent.creditLimit;
+  const {
+    body,
+    moreInfoBefore,
+    moreInfoLinkLabel,
+    moreInfoHref,
+  } = froydContent.creditLimit;
 
   return (
     <aside
@@ -21,13 +22,17 @@ export function CreditLimitAnnouncement({ visible }: Props) {
       role="alert"
       aria-live="assertive"
     >
-      <p className="ldz-credit-banner__title">{title}</p>
-      <p className="ldz-credit-banner__message">{message}</p>
-      <p className="ldz-credit-banner__helpline">
-        Ak potrebujete podporu, zavolajte {HELPLINE_LABEL}:{" "}
-        <a href={`tel:${HELPLINE_PHONE.replace(/\s/g, "")}`}>
-          {HELPLINE_PHONE}
+      <p className="ldz-credit-banner__body">{body}</p>
+      <p className="ldz-credit-banner__more">
+        {moreInfoBefore}
+        <a
+          href={moreInfoHref}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {moreInfoLinkLabel}
         </a>
+        .
       </p>
     </aside>
   );

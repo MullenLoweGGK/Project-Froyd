@@ -38,9 +38,13 @@ export const froydContent = {
   },
   /** Shown when HeyGen LiveAvatar credits / quota are exhausted */
   creditLimit: {
-    title: "Rozhovory sú dočasne nedostupné",
+    body: "Prepáčte, dnešný limit rozhovorov s AI avatarmi bol vyčerpaný, ale stretnúť sa s nimi môžete na kurzoch Prvej pomoci pre dušu.",
+    moreInfoBefore: "Viac informácií nájdete na webe ",
+    moreInfoLinkLabel: "Ligy za duševné zdravie",
+    moreInfoHref: PRVA_POMOC_URL,
+    /** Plain-text fallback for modal / session errors */
     message:
-      "Dosiahli sme limit kreditov služby AI avatarov. Skúste to prosím neskôr — pracujeme na obnovení.",
+      "Prepáčte, dnešný limit rozhovorov s AI avatarmi bol vyčerpaný, ale stretnúť sa s nimi môžete na kurzoch Prvej pomoci pre dušu. Viac informácií nájdete na webe Ligy za duševné zdravie.",
     ctaDisabledLabel: "Dočasne nedostupné",
   },
 } as const;

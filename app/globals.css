@@ -243,38 +243,37 @@ body {
 }
 
 .ldz-credit-banner {
-  margin: 0 0 1.75rem;
-  padding: 1.15rem 1.35rem;
-  border-radius: var(--ldz-radius-card);
-  background: rgba(253, 236, 238, 0.96);
-  color: #7a1f28;
-  border: 1px solid rgba(220, 53, 69, 0.28);
+  margin: 0 auto 2rem;
+  padding: clamp(1.35rem, 3vw, 1.75rem) clamp(1.5rem, 4vw, 2.25rem);
   max-width: 40rem;
-}
-
-.ldz-credit-banner__title {
-  margin: 0 0 0.4rem;
-  font-size: 1.0625rem;
-  font-weight: 700;
-  color: var(--ldz-danger);
-}
-
-.ldz-credit-banner__message,
-.ldz-credit-banner__helpline {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-}
-
-.ldz-credit-banner__helpline {
-  margin-top: 0.65rem;
-}
-
-.ldz-credit-banner__helpline a {
+  text-align: center;
+  background: var(--ldz-white);
   color: var(--ldz-primary);
+  border-radius: var(--ldz-radius-panel);
+  box-shadow: var(--ldz-shadow);
+}
+
+.ldz-credit-banner__body,
+.ldz-credit-banner__more {
+  margin: 0;
+  font-size: clamp(1rem, 1.4vw, 1.125rem);
+  line-height: 1.65;
+  color: var(--ldz-primary);
+}
+
+.ldz-credit-banner__more {
+  margin-top: 0.85rem;
+}
+
+.ldz-credit-banner a {
+  color: var(--ldz-accent);
   font-weight: 600;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: 3px;
+}
+
+.ldz-credit-banner a:hover {
+  color: var(--ldz-case-blue-deep);
 }
 
 .ldz-scenarios__headline {
