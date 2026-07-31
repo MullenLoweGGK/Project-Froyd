@@ -22,13 +22,39 @@ export type AvatarScenario = {
 /**
  * Scenario configuration for the FROYD microsite.
  *
- * Eva uses the existing public env defaults (the currently working avatar).
- * Remaining scenarios are explicit placeholders until IDs are provided.
- * Five slots are reserved for future expansion.
+ * Env naming (avatar / context / voice per person):
+ * - Eva:   NEXT_PUBLIC_EVA_*   (falls back to legacy NEXT_PUBLIC_DEFAULT_*)
+ * - Peter: NEXT_PUBLIC_PETER_*
+ * - Tomáš: NEXT_PUBLIC_TOMAS_*
  */
-const envAvatarId = process.env.NEXT_PUBLIC_DEFAULT_AVATAR_ID ?? "";
-const envContextId = process.env.NEXT_PUBLIC_DEFAULT_CONTEXT_ID ?? "";
-const envVoiceId = process.env.NEXT_PUBLIC_DEFAULT_VOICE_ID ?? "";
+function envId(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+const evaAvatarId = envId(
+  "NEXT_PUBLIC_EVA_AVATAR_ID",
+  "NEXT_PUBLIC_DEFAULT_AVATAR_ID"
+);
+const evaContextId = envId(
+  "NEXT_PUBLIC_EVA_CONTEXT_ID",
+  "NEXT_PUBLIC_DEFAULT_CONTEXT_ID"
+);
+const evaVoiceId = envId(
+  "NEXT_PUBLIC_EVA_VOICE_ID",
+  "NEXT_PUBLIC_DEFAULT_VOICE_ID"
+);
+
+const peterAvatarId = envId("NEXT_PUBLIC_PETER_AVATAR_ID");
+const peterContextId = envId("NEXT_PUBLIC_PETER_CONTEXT_ID");
+const peterVoiceId = envId("NEXT_PUBLIC_PETER_VOICE_ID");
+
+const tomasAvatarId = envId("NEXT_PUBLIC_TOMAS_AVATAR_ID");
+const tomasContextId = envId("NEXT_PUBLIC_TOMAS_CONTEXT_ID");
+const tomasVoiceId = envId("NEXT_PUBLIC_TOMAS_VOICE_ID");
 
 export const AVATAR_SCENARIOS: AvatarScenario[] = [
   {
@@ -40,12 +66,12 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
     quote: "Ľudia hovoria, že vyzerám nejaká unavená.",
     ctaLabel: "Porozprávať sa s Evou",
-    avatarId: envAvatarId,
-    contextId: envContextId,
-    voiceId: envVoiceId || undefined,
+    avatarId: evaAvatarId,
+    contextId: evaContextId,
+    voiceId: evaVoiceId || undefined,
     image: "/ldz/avatars/eva.jpg",
     aspect: "9:16",
-    available: Boolean(envAvatarId),
+    available: Boolean(evaAvatarId),
     label: "AI simulácia",
   },
   {
@@ -58,12 +84,12 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     quote: "Niektoré veci sa hovoria veľmi ťažko.",
     ctaLabel: "Porozprávať sa s Petrom",
     // Placeholder — do not invent production IDs
-    avatarId: process.env.NEXT_PUBLIC_PETER_AVATAR_ID ?? "",
-    contextId: process.env.NEXT_PUBLIC_PETER_CONTEXT_ID ?? "",
-    voiceId: process.env.NEXT_PUBLIC_PETER_VOICE_ID || undefined,
+    avatarId: peterAvatarId,
+    contextId: peterContextId,
+    voiceId: peterVoiceId || undefined,
     image: "/ldz/avatars/peter.jpg",
     aspect: "9:16",
-    available: Boolean(process.env.NEXT_PUBLIC_PETER_AVATAR_ID),
+    available: Boolean(peterAvatarId),
     label: "AI simulácia",
   },
   {
@@ -75,12 +101,12 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
     quote: "Najťažšie je vysvetliť ostatným, čo sa deje vo vašej hlave.",
     ctaLabel: "Porozprávať sa s Tomášom",
-    avatarId: process.env.NEXT_PUBLIC_TOMAS_AVATAR_ID ?? "",
-    contextId: process.env.NEXT_PUBLIC_TOMAS_CONTEXT_ID ?? "",
-    voiceId: process.env.NEXT_PUBLIC_TOMAS_VOICE_ID || undefined,
+    avatarId: tomasAvatarId,
+    contextId: tomasContextId,
+    voiceId: tomasVoiceId || undefined,
     image: "/ldz/avatars/tomas.jpg",
     aspect: "9:16",
-    available: Boolean(process.env.NEXT_PUBLIC_TOMAS_AVATAR_ID),
+    available: Boolean(tomasAvatarId),
     label: "AI simulácia",
   },
   {

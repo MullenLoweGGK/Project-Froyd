@@ -2,7 +2,7 @@
 
 Browser-based interactive AI avatar simulating a model clinical profile for educational training. The avatar speaks in Slovak.
 
-> **Disclaimer:** Educational simulation only. Not a medical device, diagnostic tool, or mental health assessment. The avatar is a fictional character used for training purposes.
+> **Disclaimer:** Education simulation only. Not a medical device, diagnostic tool, or mental health assessment. The avatar is a fictional character used for training purposes.
 
 ---
 
