@@ -9,13 +9,24 @@ import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 type Props = {
   scenario: AvatarScenario;
   isActiveSession: boolean;
+  creditsExhausted?: boolean;
   onLaunch: (scenario: AvatarScenario) => void;
 };
 
-export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Props) {
+export function AvatarScenarioCard({
+  scenario,
+  isActiveSession,
+  creditsExhausted = false,
+  onLaunch,
+}: Props) {
   const ready = isScenarioReady(scenario);
+  const launchDisabled = !ready || isActiveSession || creditsExhausted;
   const showDevHint =
     process.env.NODE_ENV === "development" && !ready && scenario.quote;
+
+  const buttonLabel = creditsExhausted
+    ? froydContent.creditLimit.ctaDisabledLabel
+    : scenario.ctaLabel;
 
   return (
     <article className="ldz-scenario-card" id={`scenario-${scenario.slug}`}>
@@ -46,7 +57,6 @@ export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Prop
               height={294}
               className="ldz-scenario-card__name-badge"
               sizes="11.2rem"
-              quality={100}
             />
           ) : (
             scenario.name
@@ -61,22 +71,24 @@ export function AvatarScenarioCard({ scenario, isActiveSession, onLaunch }: Prop
         <button
           type="button"
           className="ldz-btn ldz-btn--secondary"
-          disabled={!ready || isActiveSession}
+          disabled={launchDisabled}
           onClick={() => onLaunch(scenario)}
           aria-label={
-            ready
-              ? scenario.ctaLabel
-              : `${scenario.ctaLabel} — zatiaľ nedostupné`
+            creditsExhausted
+              ? `${scenario.ctaLabel} — ${froydContent.creditLimit.ctaDisabledLabel}`
+              : ready
+                ? scenario.ctaLabel
+                : `${scenario.ctaLabel} — zatiaľ nedostupné`
           }
         >
-          {ready ? scenario.ctaLabel : `${scenario.ctaLabel}`}
+          {buttonLabel}
         </button>
 
         <p className="ldz-scenario-card__disclosure">
           {froydContent.aiDisclosure.note}
         </p>
 
-        {!ready && scenario.quote ? (
+        {!ready && scenario.quote && !creditsExhausted ? (
           <p className="ldz-scenario-card__soon" role="status">
             Tento scenár pripravujeme.
           </p>

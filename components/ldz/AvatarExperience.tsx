@@ -6,6 +6,8 @@ import type { AvatarScenario } from "@/lib/avatar-scenarios";
 import { PUBLIC_AVATAR_SCENARIOS } from "@/lib/avatar-scenarios";
 import { froydContent } from "@/lib/ldz-content";
 import { AvatarScenarioCard } from "@/components/ldz/AvatarScenarioCard";
+import { CreditLimitAnnouncement } from "@/components/ldz/CreditLimitAnnouncement";
+import { useCreditsExhausted } from "@/hooks/useCreditsExhausted";
 
 const AvatarModal = dynamic(
   () => import("@/components/ldz/AvatarModal").then((m) => m.AvatarModal),
@@ -14,6 +16,7 @@ const AvatarModal = dynamic(
 
 export function AvatarExperience() {
   const [active, setActive] = useState<AvatarScenario | null>(null);
+  const { creditsExhausted } = useCreditsExhausted();
 
   const handleLaunch = useCallback((scenario: AvatarScenario) => {
     setActive(scenario);
@@ -36,12 +39,15 @@ export function AvatarExperience() {
           </h2>
         </div>
 
+        <CreditLimitAnnouncement visible={creditsExhausted} />
+
         <div className="ldz-scenarios__grid">
           {PUBLIC_AVATAR_SCENARIOS.map((scenario) => (
             <AvatarScenarioCard
               key={scenario.id}
               scenario={scenario}
               isActiveSession={Boolean(active)}
+              creditsExhausted={creditsExhausted}
               onLaunch={handleLaunch}
             />
           ))}
@@ -53,6 +59,7 @@ export function AvatarExperience() {
           key={active.id}
           scenario={active}
           open
+          creditsExhausted={creditsExhausted}
           onClose={handleClose}
         />
       ) : null}

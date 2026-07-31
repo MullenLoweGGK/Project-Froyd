@@ -7,6 +7,12 @@ import type {
   SessionMetadata,
   TranscriptEntry,
 } from "@/lib/types";
+import { froydContent } from "@/lib/ldz-content";
+import {
+  clearCreditsExhausted,
+  isCreditsExhaustedFromResponse,
+  markCreditsExhausted,
+} from "@/hooks/useCreditsExhausted";
 
 export type LiveAvatarConfig = {
   avatarId: string;
@@ -18,6 +24,7 @@ export type LiveAvatarConfig = {
 export type HumanErrorCode =
   | "missing-config"
   | "session-failed"
+  | "credit-limit"
   | "mic-denied"
   | "connection"
   | "stream"
@@ -48,6 +55,8 @@ function toHumanError(code: HumanErrorCode, technical?: string): string {
       return "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
     case "session-failed":
       return "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
+    case "credit-limit":
+      return froydContent.creditLimit.message;
     case "mic-denied":
       return "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v prehliadači a skúste znova.";
     case "connection":
@@ -234,6 +243,12 @@ export function useLiveAvatarSession() {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({ error: res.statusText }));
+          if (isCreditsExhaustedFromResponse(res.status, body)) {
+            markCreditsExhausted();
+            setError(toHumanError("credit-limit", String((body as { detail?: string }).detail ?? "")));
+            setStatus("error");
+            return;
+          }
           throw new Error(
             (body as { error?: string }).error ?? `Backend returned HTTP ${res.status}`
           );
@@ -242,6 +257,7 @@ export function useLiveAvatarSession() {
         const data = (await res.json()) as SessionApiResponse;
         sessionToken = data.sessionToken;
         sessionId = data.sessionId;
+        clearCreditsExhausted();
       } catch (err) {
         setError(toHumanError("session-failed", String(err)));
         setStatus("error");
@@ -371,7 +387,7 @@ export function useLiveAvatarSession() {
           /Errors validating session token/i.test(msg)
             ? "Nepodarilo sa spustiť avatara. Skontrolujte voice ID / knowledge base ID v HeyGen LiveAvatar (avatar môže byť v poriadku, ale hlas alebo kontext nie)."
             : toHumanError(code, msg);
-        setError(human);
+        setError(msg && msg !== "undefined" ? `${human} (${msg})` : human);
         if (process.env.NODE_ENV === "development") {
           console.error("[LiveAvatar] session.start failed:", err);
         }

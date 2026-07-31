@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
     "@heygen/liveavatar-web-sdk",
     "@heygen/streaming-avatar",
   ],
+  images: {
+    qualities: [75, 100],
+  },
   turbopack: {
     root: process.cwd(),
   },

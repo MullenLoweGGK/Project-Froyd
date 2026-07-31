@@ -1,7 +1,11 @@
 import type { TranscriptEntry } from "./types";
+import { classifyLiveAvatarHttpError } from "./liveavatar-errors";
 
 // LiveAvatar REST API base (not api.heygen.com — this is the new platform)
 const LIVEAVATAR_API = "https://api.liveavatar.com";
+
+/** FULL mode: 1 credit ≈ 30s. Below 1 we cannot start a meaningful session. */
+export const MIN_CREDITS_TO_START = 1;
 
 function getApiKey(): string {
   const key = process.env.LIVEAVATAR_API_KEY;
@@ -21,6 +25,51 @@ export interface LiveAvatarSessionApiResponse {
   sessionToken: string;
   sessionId: string;
   raw: unknown;
+}
+
+export interface LiveAvatarCredits {
+  creditsLeft: number;
+  exhausted: boolean;
+  raw: unknown;
+}
+
+/**
+ * GET https://api.liveavatar.com/v1/users/credits
+ * Auth: X-API-KEY (server-side only)
+ */
+export async function getLiveAvatarCredits(): Promise<LiveAvatarCredits> {
+  let raw: unknown;
+  let res: Response;
+
+  try {
+    res = await fetch(`${LIVEAVATAR_API}/v1/users/credits`, {
+      method: "GET",
+      headers: {
+        "X-API-KEY": getApiKey(),
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+    raw = await res.json().catch(() => ({ error: "Non-JSON response" }));
+  } catch (networkErr) {
+    throw new Error(
+      `Network error calling LiveAvatar credits API: ${String(networkErr)}`
+    );
+  }
+
+  if (!res.ok) {
+    throw classifyLiveAvatarHttpError(res.status, raw);
+  }
+
+  const data = (raw as { data?: { credits_left?: string | number } })?.data;
+  const parsed = Number(data?.credits_left);
+  const creditsLeft = Number.isFinite(parsed) ? parsed : 0;
+
+  return {
+    creditsLeft,
+    exhausted: creditsLeft < MIN_CREDITS_TO_START,
+    raw,
+  };
 }
 
 /**
@@ -70,17 +119,7 @@ export async function createLiveAvatarSession(
   }
 
   if (!res.ok) {
-    // Surface the API's own error message when possible
-    const apiMsg =
-      (raw as { message?: string })?.message ??
-      (raw as { detail?: string | { msg: string }[] })?.detail;
-    const detail =
-      typeof apiMsg === "string"
-        ? apiMsg
-        : Array.isArray(apiMsg)
-          ? apiMsg.map((d) => `${d.msg}`).join("; ")
-          : JSON.stringify(raw);
-    throw new Error(`LiveAvatar API ${res.status}: ${detail}`);
+    throw classifyLiveAvatarHttpError(res.status, raw);
   }
 
   // Response shape: { code: number, data: { session_id, session_token } }

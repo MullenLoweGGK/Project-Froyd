@@ -4,11 +4,13 @@ import { useEffect, useId, useRef } from "react";
 import type { AvatarScenario } from "@/lib/avatar-scenarios";
 import { useLiveAvatarSession } from "@/hooks/useLiveAvatarSession";
 import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
+import { froydContent } from "@/lib/ldz-content";
 import type { AppStatus } from "@/lib/types";
 
 type Props = {
   scenario: AvatarScenario;
   open: boolean;
+  creditsExhausted?: boolean;
   onClose: () => void;
 };
 
@@ -37,7 +39,12 @@ function statusLabel(status: AppStatus): string {
   }
 }
 
-export function AvatarModal({ scenario, open, onClose }: Props) {
+export function AvatarModal({
+  scenario,
+  open,
+  creditsExhausted = false,
+  onClose,
+}: Props) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const {
@@ -172,6 +179,10 @@ export function AvatarModal({ scenario, open, onClose }: Props) {
           <p className="ldz-modal__error" role="alert">
             {error}
           </p>
+        ) : creditsExhausted ? (
+          <p className="ldz-modal__error" role="alert">
+            {froydContent.creditLimit.message}
+          </p>
         ) : null}
 
         <div className="ldz-modal__controls">
@@ -180,8 +191,11 @@ export function AvatarModal({ scenario, open, onClose }: Props) {
               type="button"
               className="ldz-btn ldz-btn--secondary"
               onClick={() => void handleStart()}
+              disabled={creditsExhausted}
             >
-              Spustiť rozhovor
+              {creditsExhausted
+                ? froydContent.creditLimit.ctaDisabledLabel
+                : "Spustiť rozhovor"}
             </button>
           ) : (
             <>

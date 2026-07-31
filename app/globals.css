@@ -242,6 +242,41 @@ body {
   color: var(--ldz-white);
 }
 
+.ldz-credit-banner {
+  margin: 0 0 1.75rem;
+  padding: 1.15rem 1.35rem;
+  border-radius: var(--ldz-radius-card);
+  background: rgba(253, 236, 238, 0.96);
+  color: #7a1f28;
+  border: 1px solid rgba(220, 53, 69, 0.28);
+  max-width: 40rem;
+}
+
+.ldz-credit-banner__title {
+  margin: 0 0 0.4rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--ldz-danger);
+}
+
+.ldz-credit-banner__message,
+.ldz-credit-banner__helpline {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.ldz-credit-banner__helpline {
+  margin-top: 0.65rem;
+}
+
+.ldz-credit-banner__helpline a {
+  color: var(--ldz-primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .ldz-scenarios__headline {
   margin: 0;
   color: var(--ldz-white);
@@ -689,6 +724,15 @@ body {
   gap: 1rem;
   text-align: center;
   padding: 2rem;
+}
+
+.ldz-error-page__detail {
+  margin: 0 auto;
+  max-width: 36rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(12, 61, 122, 0.75);
+  word-break: break-word;
 }
 
 @media (prefers-reduced-motion: reduce) {

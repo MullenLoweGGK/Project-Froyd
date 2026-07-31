@@ -36,4 +36,11 @@ export const froydContent = {
     note:
       "Interagujete s AI avatarom vo vzdelávacej simulácii. Scenár nevyjadruje všetkých ľudí s daným prežívaním, nie je diagnostickým ani medicínskym nástrojom.",
   },
+  /** Shown when HeyGen LiveAvatar credits / quota are exhausted */
+  creditLimit: {
+    title: "Rozhovory sú dočasne nedostupné",
+    message:
+      "Dosiahli sme limit kreditov služby AI avatarov. Skúste to prosím neskôr — pracujeme na obnovení.",
+    ctaDisabledLabel: "Dočasne nedostupné",
+  },
 } as const;
