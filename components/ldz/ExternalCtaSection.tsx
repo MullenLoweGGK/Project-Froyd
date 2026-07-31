@@ -17,6 +17,7 @@ export function ExternalCtaSection() {
       id="kurz"
       className="ldz-info-cta"
       aria-labelledby="course-cta-heading"
+      lang="sk"
     >
       <div className="ldz-container ldz-info-cta__inner">
         <div className="ldz-info-cta__block">

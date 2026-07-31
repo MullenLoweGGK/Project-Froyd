@@ -22,9 +22,7 @@ export const froydContent = {
     challengeHeadline: "Dokážete spoznať, čo ich trápi?",
     challengeParagraphs: [
       "Nie všetky duševné problémy sú viditeľné na prvý pohľad. Niekedy však veľa prezradí aj obyčajný rozhovor. Na Slovensku je pritom duševné zdravie stále témou, o ktorej sa mnohí ostýchajú hovoriť. Zo strachu, hanby alebo jednoducho preto, že nevedia, ako začať.",
-      "Preto sme vytvorili Projekt FROYD - AI avatarov, ktorí dokonale imitujú rôzne duševné problémy.",
-      "AI avatar vám umožní skúšať, robiť chyby alebo sa pýtať citlivé otázky v bezpečnom prostredí.",
-      "Bez strachu, že niekomu ublížite.",
+      "Preto sme vytvorili Projekt FROYD - AI avatarov, ktorí dokonale imitujú rôzne duševné problémy. AI avatar vám umožní skúšať, robiť chyby alebo sa pýtať citlivé otázky v bezpečnom prostredí. Bez strachu, že niekomu ublížite.",
     ],
     courseHeadline: "Chcete vedieť viac?",
     courseParagraphs: [
