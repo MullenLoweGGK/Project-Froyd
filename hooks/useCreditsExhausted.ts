@@ -60,8 +60,9 @@ async function fetchCreditsExhausted(): Promise<boolean | null> {
 }
 
 /**
- * Live balance from HeyGen + optimistic sessionStorage after a failed start.
- * Refills clear the banner automatically (no env / redeploy).
+ * LiveAvatar credit-limit banner state.
+ * Driven by real session create failures (402 / credit_limit), not credits_left —
+ * overage can keep sessions working at zero balance until the spending cap is hit.
  */
 export function useCreditsExhausted() {
   const [exhausted, setExhausted] = useState(false);

@@ -4,7 +4,7 @@ import { classifyLiveAvatarHttpError } from "./liveavatar-errors";
 // LiveAvatar REST API base (not api.heygen.com — this is the new platform)
 const LIVEAVATAR_API = "https://api.liveavatar.com";
 
-/** FULL mode: 1 credit ≈ 30s. Below 1 we cannot start a meaningful session. */
+/** FULL mode: ~2 credits/min. Kept for reference — not used to gate the UI (overage). */
 export const MIN_CREDITS_TO_START = 1;
 
 function getApiKey(): string {
@@ -29,13 +29,14 @@ export interface LiveAvatarSessionApiResponse {
 
 export interface LiveAvatarCredits {
   creditsLeft: number;
-  exhausted: boolean;
   raw: unknown;
 }
 
 /**
  * GET https://api.liveavatar.com/v1/users/credits
  * Auth: X-API-KEY (server-side only)
+ *
+ * Balance alone must not gate the public UI — overage can allow sessions at 0.
  */
 export async function getLiveAvatarCredits(): Promise<LiveAvatarCredits> {
   let raw: unknown;
@@ -67,7 +68,6 @@ export async function getLiveAvatarCredits(): Promise<LiveAvatarCredits> {
 
   return {
     creditsLeft,
-    exhausted: creditsLeft < MIN_CREDITS_TO_START,
     raw,
   };
 }

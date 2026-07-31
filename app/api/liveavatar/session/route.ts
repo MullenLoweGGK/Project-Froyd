@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createLiveAvatarSession } from "@/lib/liveavatar";
+import { setLiveAvatarCreditsExhausted } from "@/lib/liveavatar-credits-state";
 import { LiveAvatarApiError } from "@/lib/liveavatar-errors";
 import { CreateSessionSchema } from "@/lib/validators";
 
@@ -29,6 +30,8 @@ export async function POST(req: NextRequest) {
       language,
       isSandbox,
     });
+    // Overage or topped-up balance — sessions work again.
+    setLiveAvatarCreditsExhausted(false);
     console.log(`[session] Created session ${result.sessionId} for avatar ${avatarId}`);
     return NextResponse.json({
       sessionToken: result.sessionToken,
@@ -38,6 +41,10 @@ export async function POST(req: NextRequest) {
     console.error("[session] LiveAvatar API error:", err);
 
     if (err instanceof LiveAvatarApiError) {
+      if (err.code === "credit_limit") {
+        setLiveAvatarCreditsExhausted(true);
+      }
+
       const status =
         err.code === "credit_limit"
           ? 402
