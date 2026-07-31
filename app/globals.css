@@ -654,21 +654,6 @@ body {
   opacity: 0.8;
 }
 
-.ldz-modal__subtitle {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  margin: 0;
-  padding: 0.65rem 0.85rem;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.65);
-  color: white;
-  font-size: 0.9375rem;
-  line-height: 1.4;
-  text-align: center;
-}
-
 .ldz-modal__status {
   margin: 0;
   font-size: 0.875rem;

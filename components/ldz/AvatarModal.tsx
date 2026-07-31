@@ -44,8 +44,6 @@ export function AvatarModal({ scenario, open, onClose }: Props) {
     videoRef,
     status,
     error,
-    avatarChunk,
-    lastAvatarText,
     micMuted,
     isActive,
     isIdle,
@@ -88,7 +86,6 @@ export function AvatarModal({ scenario, open, onClose }: Props) {
 
   if (!open) return null;
 
-  const subtitle = avatarChunk || lastAvatarText;
   const streamVisible =
     status === "ready" ||
     status === "user-speaking" ||
@@ -161,9 +158,6 @@ export function AvatarModal({ scenario, open, onClose }: Props) {
                 )}
               </div>
             )}
-            {subtitle && streamVisible ? (
-              <p className="ldz-modal__subtitle">{subtitle}</p>
-            ) : null}
           </div>
         </div>
 
