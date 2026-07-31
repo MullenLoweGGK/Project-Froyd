@@ -429,6 +429,8 @@ body {
   font-weight: 700;
   font-size: clamp(1.5rem, 3vw, 2rem);
   line-height: 1.25;
+  text-align: justify;
+  text-align-last: left;
 }
 
 .ldz-info-cta__block p {
@@ -436,10 +438,14 @@ body {
   color: var(--ldz-white);
   font-size: clamp(1rem, 1.3vw, 1.125rem);
   line-height: 1.65;
+  text-align: justify;
+  text-align-last: left;
+  hyphens: auto;
 }
 
 .ldz-info-cta__block .ldz-btn {
   margin-top: 0.5rem;
+  align-self: flex-start;
 }
 
 /* ─── Footer (orange case graphic) ─────────────────────────────── */
