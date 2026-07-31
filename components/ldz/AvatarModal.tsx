@@ -153,7 +153,8 @@ export function AvatarModal({ scenario, open, onClose }: Props) {
                 <p>{statusLabel(status)}</p>
                 {isIdle && (
                   <p className="ldz-modal__hint">
-                    Po spustení povoľte mikrofón a položte tri otázky.
+                    Po spustení povoľte mikrofón a položte tri otázky. Maximálny
+                    čas rozhovoru je 90 sekúnd.
                   </p>
                 )}
               </div>

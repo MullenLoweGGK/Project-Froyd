@@ -68,10 +68,13 @@ function toHumanError(code: HumanErrorCode, technical?: string): string {
  * Only one session should exist at a time — callers must stop before starting another.
  * The HeyGen SDK is dynamically imported only when the user starts a session.
  */
+const MAX_SESSION_MS = 90_000;
+
 export function useLiveAvatarSession() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const sessionRef = useRef<SessionLike | null>(null);
   const transcriptRef = useRef<TranscriptEntry[]>([]);
+  const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [status, setStatus] = useState<AppStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +87,13 @@ export function useLiveAvatarSession() {
   useEffect(() => {
     transcriptRef.current = transcript;
   }, [transcript]);
+
+  const clearMaxDurationTimer = useCallback(() => {
+    if (maxDurationTimerRef.current) {
+      clearTimeout(maxDurationTimerRef.current);
+      maxDurationTimerRef.current = null;
+    }
+  }, []);
 
   const addEntry = useCallback((role: "user" | "avatar" | "system", text: string) => {
     const trimmed = text.trim();
@@ -121,6 +131,8 @@ export function useLiveAvatarSession() {
   );
 
   const stopSession = useCallback(async () => {
+    clearMaxDurationTimer();
+
     const session = sessionRef.current;
     if (!session) {
       setStatus((s) => (s === "idle" ? s : "stopped"));
@@ -148,7 +160,20 @@ export function useLiveAvatarSession() {
     });
 
     setStatus("stopped");
-  }, [saveTranscript]);
+  }, [clearMaxDurationTimer, saveTranscript]);
+
+  const armMaxDurationTimer = useCallback(() => {
+    clearMaxDurationTimer();
+    maxDurationTimerRef.current = setTimeout(() => {
+      maxDurationTimerRef.current = null;
+      void (async () => {
+        await stopSession();
+        setError(
+          "Dosiahli ste maximálny čas rozhovoru (90 sekúnd). Môžete spustiť nový rozhovor."
+        );
+      })();
+    }, MAX_SESSION_MS);
+  }, [clearMaxDurationTimer, stopSession]);
 
   const toggleMic = useCallback(async () => {
     const session = sessionRef.current;
@@ -184,6 +209,7 @@ export function useLiveAvatarSession() {
         await stopSession();
       }
 
+      clearMaxDurationTimer();
       setError(null);
       setTranscript([]);
       setAvatarChunk("");
@@ -256,9 +282,13 @@ export function useLiveAvatarSession() {
         session.voiceChat.on(VoiceChatEvent.UNMUTED, () => setMicMuted(false));
 
         session.on(SessionEvent.SESSION_STATE_CHANGED, (state) => {
-          if (state === SessionState.CONNECTED) setStatus("ready");
+          if (state === SessionState.CONNECTED) {
+            setStatus("ready");
+            armMaxDurationTimer();
+          }
           if (state === SessionState.DISCONNECTING) setStatus("stopping");
           if (state === SessionState.DISCONNECTED) {
+            clearMaxDurationTimer();
             setStatus("disconnected");
             sessionRef.current = null;
           }
@@ -271,6 +301,7 @@ export function useLiveAvatarSession() {
         });
 
         session.on(SessionEvent.SESSION_DISCONNECTED, (reason) => {
+          clearMaxDurationTimer();
           if (reason !== SessionDisconnectReason.CLIENT_INITIATED) {
             setStatus("disconnected");
             setError(toHumanError("disconnect"));
@@ -318,12 +349,14 @@ export function useLiveAvatarSession() {
         });
 
         session.on(AgentEventsEnum.SESSION_STOPPED, () => {
+          clearMaxDurationTimer();
           setStatus("stopped");
           sessionRef.current = null;
         });
 
         await session.start();
       } catch (err) {
+        clearMaxDurationTimer();
         const msg = String(err);
         // HeyGen often returns a generic "Errors validating session token";
         // surface a clearer public message when the cause is identifiable.
@@ -346,15 +379,16 @@ export function useLiveAvatarSession() {
         sessionRef.current = null;
       }
     },
-    [addEntry, stopSession]
+    [addEntry, armMaxDurationTimer, clearMaxDurationTimer, stopSession]
   );
 
   useEffect(() => {
     return () => {
+      clearMaxDurationTimer();
       sessionRef.current?.stop().catch(() => null);
       sessionRef.current = null;
     };
-  }, []);
+  }, [clearMaxDurationTimer]);
 
   const isActive =
     status === "ready" ||
