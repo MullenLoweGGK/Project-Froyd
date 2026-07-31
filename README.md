@@ -8,7 +8,7 @@ Browser-based interactive AI avatar simulating a model clinical profile for educ
 
 ## What this is
 
-- A Next.js app connected to the **HeyGen LiveAvatar** platform (`@heygen/liveavatar-web-sdk`)
+- Next.js app connected to the **HeyGen LiveAvatar** platform (`@heygen/liveavatar-web-sdk`)
 - Live voice conversation with a simulated patient avatar in Slovak
 - FULL mode — HeyGen handles LLM, STT, and TTS entirely server-side
 - Fullscreen presentation mode with live subtitles
