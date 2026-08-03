@@ -2,6 +2,8 @@ export type AvatarScenario = {
   id: string;
   slug: string;
   name: string;
+  /** Instrumental case for “Rozhovor s …” headlines (Evou, Petrom, Tomášom) */
+  nameInstrumental: string;
   title: string;
   description: string;
   quote: string;
@@ -66,6 +68,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     id: "eva",
     slug: "eva",
     name: "Eva",
+    nameInstrumental: "Evou",
     title: "Eva",
     description:
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
@@ -84,6 +87,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     id: "peter",
     slug: "peter",
     name: "Peter",
+    nameInstrumental: "Petrom",
     title: "Peter",
     description:
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
@@ -103,6 +107,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     id: "tomas",
     slug: "tomas",
     name: "Tomáš",
+    nameInstrumental: "Tomášom",
     title: "Tomáš",
     description:
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
@@ -121,6 +126,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     id: "scenario-4",
     slug: "scenario-4",
     name: "Scenár 4",
+    nameInstrumental: "Scenárom 4",
     title: "Scenár 4",
     description: "Pripravené miesto pre ďalší avatarový scenár.",
     quote: "",
@@ -135,6 +141,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     id: "scenario-5",
     slug: "scenario-5",
     name: "Scenár 5",
+    nameInstrumental: "Scenárom 5",
     title: "Scenár 5",
     description: "Pripravené miesto pre ďalší avatarový scenár.",
     quote: "",

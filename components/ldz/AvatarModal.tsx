@@ -128,7 +128,7 @@ export function AvatarModal({
       <div className="ldz-modal__panel">
         <div className="ldz-modal__header">
           <div>
-            <h2 id={titleId}>Rozhovor s {scenario.name}</h2>
+            <h2 id={titleId}>Rozhovor s {scenario.nameInstrumental}</h2>
             <AiSimulationLabel compact />
           </div>
           <button
@@ -169,11 +169,13 @@ export function AvatarModal({
           </div>
         </div>
 
-        <p className="ldz-modal__status" role="status" aria-live="polite">
-          {statusLabel(status)}
-          {isActive && !micMuted ? " · Mikrofón zapnutý" : null}
-          {isActive && micMuted ? " · Mikrofón stlmený" : null}
-        </p>
+        {status !== "idle" ? (
+          <p className="ldz-modal__status" role="status" aria-live="polite">
+            {statusLabel(status)}
+            {isActive && !micMuted ? " · Mikrofón zapnutý" : null}
+            {isActive && micMuted ? " · Mikrofón stlmený" : null}
+          </p>
+        ) : null}
 
         {error ? (
           <p className="ldz-modal__error" role="alert">
