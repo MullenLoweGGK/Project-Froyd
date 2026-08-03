@@ -142,11 +142,6 @@ export function AvatarModal({
           </button>
         </div>
 
-        <p className="ldz-modal__note">
-          Interagujete s AI avatárom vo vzdelávacej simulácii. Scenár nie je
-          diagnostickým ani medicínskym nástrojom.
-        </p>
-
         <div className="ldz-modal__stage">
           <div className="ldz-modal__video-wrap">
             <video
