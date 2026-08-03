@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Poppins, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { froydContent } from "@/lib/ldz-content";
 import "./globals.css";
 
@@ -66,7 +67,10 @@ export default function RootLayout({
       lang="sk"
       className={`${poppins.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
