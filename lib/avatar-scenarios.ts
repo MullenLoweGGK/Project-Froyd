@@ -21,6 +21,18 @@ export type AvatarScenario = {
   aspect: "9:16";
   /** When false, launch CTA is disabled */
   available: boolean;
+  /**
+   * Spoken intro after stream is ready (session.repeat).
+   * HeyGen Context Opening Text must be empty/disabled so this does not double-fire.
+   */
+  openingText?: string;
+  /** Hard client-side stop after N user turns. */
+  questionLimit?: number;
+  /** Forced closing line when questionLimit is hit (session.repeat). */
+  questionLimitMessage?: string;
+  /** Spoken on every further user turn after the limit (5th+). */
+  questionLimitFollowupMessage?: string;
+
 };
 
 /**
@@ -82,6 +94,13 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(evaAvatarId),
     label: "AI simulácia",
+    openingText:
+      "Ahoj, volám sa Eva, mám 56 rokov a 31 rokov pracujem v zdravotníctve, z toho posledných sedem rokov ako vrchná sestra. Mám manžela a dve dospelé deti, ktoré už nežijú doma. Posledný rok sa starám o chorú mamu. Rada cestujem a chodím na túry do prírody. V poslednom čase sa k tomu však na nič nemám energiu.",
+    questionLimit: 4,
+    questionLimitMessage:
+      "Toto je už štvrtá otázka. Na ďalšie otázky ti rada odpoviem na kurze Prvá pomoc pre dušu.",
+    questionLimitFollowupMessage:
+      "Na ďalšie otázky ti rada odpoviem na kurze prvej pomoci pre dušu.",
   },
   {
     id: "peter",
@@ -102,6 +121,13 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(peterAvatarId),
     label: "AI simulácia",
+    openingText:
+      "Ahoj, volám sa Peter, mám 45 rokov a poslednú dobu rozmýšľam nad zmenou práce. Prestala mi dávať zmysel, ale neviem si predstaviť nájsť si niečo lepšie. Situácia je zlá. Zvykol som športovať, ale teraz radšej iba pozerám telku.",
+    questionLimit: 4,
+    questionLimitMessage:
+      "Toto je už štvrtá otázka. Na ďalšie otázky ti rád odpoviem na kurze Prvá pomoc pre dušu.",
+    questionLimitFollowupMessage:
+      "Na ďalšie otázky ti rád odpoviem na kurze prvej pomoci pre dušu.",
   },
   {
     id: "tomas",
@@ -121,6 +147,13 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(tomasAvatarId),
     label: "AI simulácia",
+    openingText:
+      "Ahoj, volám sa Tomáš, mám 22 rokov a študujem informatiku. Popri tom už pracujem vo firme. Mám rád svoju prácu, lebo si môžem robiť svoje a nemusím sa baviť s druhými. Čoskoro ma čaká prezentovanie mojej práce pred kolegami. Nemôžem kvôli tomu spať.",
+    questionLimit: 4,
+    questionLimitMessage:
+      "Toto je už štvrtá otázka. Na ďalšie otázky ti rád odpoviem na kurze Prvá pomoc pre dušu.",
+    questionLimitFollowupMessage:
+      "Na ďalšie otázky ti rád odpoviem na kurze prvej pomoci pre dušu.",
   },
   {
     id: "scenario-4",

@@ -684,6 +684,78 @@ body {
   color: rgba(255, 255, 255, 0.9);
 }
 
+.ldz-modal__ready-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  gap: 0.65rem;
+  padding: 1.25rem;
+  text-align: center;
+  background: rgba(8, 28, 42, 0.72);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.ldz-modal__static-avatar {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.ldz-modal__ready-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.ldz-modal__ready-copy {
+  margin: 0;
+  max-width: 20rem;
+  justify-self: center;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+
+.ldz-modal__ready-copy--emphasis {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.ldz-modal__ready-progress {
+  width: min(100%, 12rem);
+  height: 2px;
+  margin: 0.85rem auto 0;
+  justify-self: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+}
+
+.ldz-modal__ready-progress-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(1);
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.92);
+  animation-name: ldz-ready-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes ldz-ready-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 .ldz-modal__hint {
   margin: 0;
   font-size: 0.875rem;

@@ -3,6 +3,7 @@ export type AppStatus =
   | "idle"
   | "creating-session"
   | "connecting"
+  | "awaiting-ready"
   | "ready"
   | "user-speaking"
   | "avatar-speaking"

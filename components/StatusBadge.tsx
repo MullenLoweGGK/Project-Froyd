@@ -6,6 +6,7 @@ const STATUS_CONFIG: Record<AppStatus, { label: string; cls: string }> = {
   idle:              { label: "Idle",               cls: "bg-zinc-700 text-zinc-300" },
   "creating-session":{ label: "Creating session…",  cls: "bg-yellow-800 text-yellow-200" },
   connecting:        { label: "Connecting…",         cls: "bg-blue-800 text-blue-200" },
+  "awaiting-ready":  { label: "Waiting for user…",   cls: "bg-amber-800 text-amber-100" },
   ready:             { label: "Ready",               cls: "bg-emerald-800 text-emerald-200" },
   "user-speaking":   { label: "User speaking",       cls: "bg-sky-700 text-sky-100" },
   "avatar-speaking": { label: "Avatar speaking",     cls: "bg-indigo-700 text-indigo-200" },
