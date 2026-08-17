@@ -574,6 +574,7 @@ export function useLiveAvatarSession() {
           }
 
           if (!isCurrentSession()) return;
+          setError(null);
           setStatus("awaiting-ready");
         };
 
@@ -871,21 +872,26 @@ export function useLiveAvatarSession() {
     setError(null);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // Mic grant: under button tap this shows the iOS prompt. After a prior grant
-    // (from "Spustiť"), a timer-fired confirmReady can reuse it without a gesture.
-    try {
-      await requestMicrophoneAccess();
-      micPermissionGrantedRef.current = true;
+    // If mic was already granted on "Spustiť", do not call getUserMedia again —
+    // a second probe on iOS often fails spuriously and only shows a redundant error.
+    if (!micPermissionGrantedRef.current) {
+      try {
+        await requestMicrophoneAccess();
+        micPermissionGrantedRef.current = true;
+        setMicPermissionGranted(true);
+      } catch (err) {
+        console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
+        gate.introStarted = false;
+        setPreparingIntro(false);
+        setError(toHumanError("mic-denied", micErrorDetail(err)));
+        setStatus("awaiting-ready");
+        return false;
+      }
+    } else {
       setMicPermissionGranted(true);
-    } catch (err) {
-      console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
-      gate.introStarted = false;
-      setPreparingIntro(false);
-      setError(toHumanError("mic-denied", micErrorDetail(err)));
-      // Stay on awaiting-ready so the user can fix Settings and tap again.
-      setStatus("awaiting-ready");
-      return false;
     }
+
+    setError(null);
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
