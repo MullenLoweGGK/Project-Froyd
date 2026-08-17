@@ -15,6 +15,17 @@ import {
 } from "@/hooks/useCreditsExhausted";
 import { preferMediaLoudspeaker } from "@/lib/media-speaker";
 
+/** Probe+release mic. Must run under a user gesture on iOS Safari (first grant). */
+async function requestMicrophoneAccess(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+    },
+  });
+  stream.getTracks().forEach((t) => t.stop());
+}
+
 export type LiveAvatarConfig = {
   avatarId: string;
   contextId?: string;
@@ -101,7 +112,7 @@ function toHumanError(code: HumanErrorCode, technical?: string): string {
     case "credit-limit":
       return froydContent.creditLimit.message;
     case "mic-denied":
-      return "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v prehliadači a skúste znova.";
+      return "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v nastaveniach prehliadača / iPhonu (Nastavenia → Safari → Mikrofón) a skúste znova.";
     case "connection":
       return "Pripojenie sa nepodarilo. Skontrolujte internet a skúste znova.";
     case "stream":
@@ -240,6 +251,8 @@ export function useLiveAvatarSession() {
   const maxDurationArmedRef = useRef(false);
   const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const introGateRef = useRef<IntroGate | null>(null);
+  /** iOS only shows the mic prompt during a user gesture — grant on "Spustiť". */
+  const micPermissionGrantedRef = useRef(false);
 
   const [status, setStatus] = useState<AppStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -397,6 +410,20 @@ export function useLiveAvatarSession() {
         return;
       }
 
+      // iOS Safari: first mic prompt must be the first await under the tap.
+      // Do this before stopSession/fetch so the 30s disclaimer auto-start still works.
+      try {
+        await requestMicrophoneAccess();
+        micPermissionGrantedRef.current = true;
+        await preferMediaLoudspeaker(videoRef.current);
+        await unlockBrowserAudio();
+      } catch {
+        micPermissionGrantedRef.current = false;
+        setError(toHumanError("mic-denied"));
+        setStatus("error");
+        return;
+      }
+
       if (sessionRef.current) {
         await stopSession();
       }
@@ -411,7 +438,6 @@ export function useLiveAvatarSession() {
       setAvatarChunk("");
       setLastAvatarText("");
       setStatus("creating-session");
-      void preferMediaLoudspeaker(videoRef.current);
 
       let sessionToken: string;
       let sessionId: string;
@@ -833,15 +859,21 @@ export function useLiveAvatarSession() {
     setPreparingIntro(true);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
+    // Prefer permission already granted on "Spustiť" (required for iOS auto-start
+    // after the 30s disclaimer — that path has no user gesture).
     try {
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mic.getTracks().forEach((t) => t.stop());
+      await requestMicrophoneAccess();
+      micPermissionGrantedRef.current = true;
     } catch {
-      gate.introStarted = false;
-      setPreparingIntro(false);
-      setError(toHumanError("mic-denied"));
-      setStatus("error");
-      return;
+      if (!micPermissionGrantedRef.current) {
+        gate.introStarted = false;
+        setPreparingIntro(false);
+        setError(toHumanError("mic-denied"));
+        setStatus("error");
+        return;
+      }
+      // Already granted earlier — continue; HeyGen voiceChat will re-request if needed.
+      debugLog("MIC_REPROBE_SKIPPED", { sessionId: gate.sessionId });
     }
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return;
