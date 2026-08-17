@@ -64,6 +64,7 @@ export function AvatarModal({
     confirmReady,
     preparingIntro,
     questionLimitReached,
+    micPermissionGranted,
   } = useLiveAvatarSession();
 
   useEffect(() => {
@@ -101,12 +102,15 @@ export function AvatarModal({
 
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
 
-  // After 30s on the disclaimer screen, start the intro automatically.
+  // After 30s, auto-start only if mic was already granted on "Spustiť".
+  // On iOS, a timer has no user gesture — without prior grant getUserMedia fails
+  // silently (no prompt) and only shows a red error.
   useEffect(() => {
     if (!awaitingReady) {
       readyStartedRef.current = false;
       return;
     }
+    if (!micPermissionGranted) return;
 
     const timer = window.setTimeout(() => {
       if (readyStartedRef.current) return;
@@ -115,7 +119,7 @@ export function AvatarModal({
     }, READY_COUNTDOWN_MS);
 
     return () => window.clearTimeout(timer);
-  }, [awaitingReady, confirmReady]);
+  }, [awaitingReady, confirmReady, micPermissionGranted]);
 
   if (!open) return null;
 
@@ -146,10 +150,11 @@ export function AvatarModal({
     });
   }
 
-  function handleStartNow() {
-    if (readyStartedRef.current) return;
+  async function handleStartNow() {
+    if (readyStartedRef.current || preparingIntro) return;
     readyStartedRef.current = true;
-    void confirmReady();
+    const ok = await confirmReady();
+    if (!ok) readyStartedRef.current = false;
   }
 
   return (
@@ -224,18 +229,25 @@ export function AvatarModal({
                   dohovorí, začne vás okamžite počúvať a hneď odpovie na vašu
                   otázku a predošlú odpoveď predčasne ukončí.
                 </p>
-                <div
-                  className="ldz-modal__ready-progress"
-                  aria-hidden="true"
-                >
+                {!micPermissionGranted ? (
+                  <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
+                    Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás
+                    iPhone vyzve.
+                  </p>
+                ) : (
                   <div
-                    key={status}
-                    className="ldz-modal__ready-progress-fill"
-                    style={{
-                      animationDuration: `${READY_COUNTDOWN_MS}ms`,
-                    }}
-                  />
-                </div>
+                    className="ldz-modal__ready-progress"
+                    aria-hidden="true"
+                  >
+                    <div
+                      key={status}
+                      className="ldz-modal__ready-progress-fill"
+                      style={{
+                        animationDuration: `${READY_COUNTDOWN_MS}ms`,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             ) : null}
             {preparingIntro ? (
@@ -290,10 +302,12 @@ export function AvatarModal({
               <button
                 type="button"
                 className="ldz-btn ldz-btn--secondary"
-                onClick={handleStartNow}
+                onClick={() => void handleStartNow()}
                 disabled={preparingIntro}
               >
-                Začať rozhovor hneď
+                {micPermissionGranted
+                  ? "Začať rozhovor hneď"
+                  : "Povoliť mikrofón a začať"}
               </button>
               <button
                 type="button"

@@ -15,15 +15,20 @@ import {
 } from "@/hooks/useCreditsExhausted";
 import { preferMediaLoudspeaker } from "@/lib/media-speaker";
 
-/** Probe+release mic. Must run under a user gesture on iOS Safari (first grant). */
+/**
+ * Probe+release mic. On iOS Safari the first grant must run under a user gesture.
+ * Use plain `{ audio: true }` — detailed constraints can fail as OverconstrainedError
+ * on some iPhones without showing a permission dialog.
+ */
 async function requestMicrophoneAccess(): Promise<void> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-    },
-  });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   stream.getTracks().forEach((t) => t.stop());
+}
+
+function micErrorDetail(err: unknown): string {
+  if (!err || typeof err !== "object") return String(err);
+  const e = err as { name?: string; message?: string };
+  return [e.name, e.message].filter(Boolean).join(": ") || String(err);
 }
 
 export type LiveAvatarConfig = {
@@ -263,6 +268,7 @@ export function useLiveAvatarSession() {
   const [micMuted, setMicMuted] = useState(false);
   const [preparingIntro, setPreparingIntro] = useState(false);
   const [questionLimitReached, setQuestionLimitReached] = useState(false);
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false);
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -410,18 +416,23 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // iOS Safari: first mic prompt must be the first await under the tap.
-      // Do this before stopSession/fetch so the 30s disclaimer auto-start still works.
+      // iOS Safari: request mic on the tap that starts the session (user gesture).
+      // Never block session create if this fails — user can grant on "Začať rozhovor hneď".
       try {
         await requestMicrophoneAccess();
         micPermissionGrantedRef.current = true;
+        setMicPermissionGranted(true);
+      } catch (err) {
+        micPermissionGrantedRef.current = false;
+        setMicPermissionGranted(false);
+        console.error("[LiveAvatar] mic permission on start:", micErrorDetail(err));
+      }
+
+      try {
         await preferMediaLoudspeaker(videoRef.current);
         await unlockBrowserAudio();
       } catch {
-        micPermissionGrantedRef.current = false;
-        setError(toHumanError("mic-denied"));
-        setStatus("error");
-        return;
+        /* best-effort */
       }
 
       if (sessionRef.current) {
@@ -848,40 +859,40 @@ export function useLiveAvatarSession() {
    * After disclaimer countdown / "start now": unlock audio, prime media,
    * then speak openingText (no warm-up utterance).
    */
-  const confirmReady = useCallback(async () => {
+  const confirmReady = useCallback(async (): Promise<boolean> => {
     const gate = introGateRef.current;
     const session = sessionRef.current;
-    if (!gate || !session) return;
-    if (!gate.streamReady || !gate.sessionConnected) return;
-    if (gate.introStarted) return;
+    if (!gate || !session) return false;
+    if (!gate.streamReady || !gate.sessionConnected) return false;
+    if (gate.introStarted) return false;
 
     gate.introStarted = true;
     setPreparingIntro(true);
+    setError(null);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // Prefer permission already granted on "Spustiť" (required for iOS auto-start
-    // after the 30s disclaimer — that path has no user gesture).
+    // Mic grant: under button tap this shows the iOS prompt. After a prior grant
+    // (from "Spustiť"), a timer-fired confirmReady can reuse it without a gesture.
     try {
       await requestMicrophoneAccess();
       micPermissionGrantedRef.current = true;
-    } catch {
-      if (!micPermissionGrantedRef.current) {
-        gate.introStarted = false;
-        setPreparingIntro(false);
-        setError(toHumanError("mic-denied"));
-        setStatus("error");
-        return;
-      }
-      // Already granted earlier — continue; HeyGen voiceChat will re-request if needed.
-      debugLog("MIC_REPROBE_SKIPPED", { sessionId: gate.sessionId });
+      setMicPermissionGranted(true);
+    } catch (err) {
+      console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
+      gate.introStarted = false;
+      setPreparingIntro(false);
+      setError(toHumanError("mic-denied", micErrorDetail(err)));
+      // Stay on awaiting-ready so the user can fix Settings and tap again.
+      setStatus("awaiting-ready");
+      return false;
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return;
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return;
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     if (videoRef.current) {
       await primeAvatarMedia(videoRef.current, () => {
@@ -894,7 +905,7 @@ export function useLiveAvatarSession() {
       await preferMediaLoudspeaker(videoRef.current);
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return;
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     try {
       await session.voiceChat.mute();
@@ -902,7 +913,7 @@ export function useLiveAvatarSession() {
       debugLog("INTRO_MUTE_FAILED", err);
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return;
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     debugLog("INTRO_SCHEDULED", {
       sessionId: gate.sessionId,
@@ -913,7 +924,7 @@ export function useLiveAvatarSession() {
       introTimerRef.current = id;
     });
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return;
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     if (videoRef.current) {
       videoRef.current.muted = false;
@@ -931,7 +942,7 @@ export function useLiveAvatarSession() {
       }
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return;
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     if (gate.openingText) {
       gate.introInProgress = true;
@@ -952,7 +963,7 @@ export function useLiveAvatarSession() {
         }
         setStatus("ready");
       }
-      return;
+      return true;
     }
 
     setPreparingIntro(false);
@@ -963,6 +974,7 @@ export function useLiveAvatarSession() {
       /* ignore */
     }
     setStatus("ready");
+    return true;
   }, []);
 
   useEffect(() => {
@@ -999,6 +1011,7 @@ export function useLiveAvatarSession() {
     micMuted,
     preparingIntro,
     questionLimitReached,
+    micPermissionGranted,
     isActive,
     isIdle,
     startSession,
