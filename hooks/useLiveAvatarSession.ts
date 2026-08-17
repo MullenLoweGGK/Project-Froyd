@@ -13,6 +13,7 @@ import {
   isCreditsExhaustedFromResponse,
   markCreditsExhausted,
 } from "@/hooks/useCreditsExhausted";
+import { preferMediaLoudspeaker } from "@/lib/media-speaker";
 
 export type LiveAvatarConfig = {
   avatarId: string;
@@ -410,6 +411,7 @@ export function useLiveAvatarSession() {
       setAvatarChunk("");
       setLastAvatarText("");
       setStatus("creating-session");
+      void preferMediaLoudspeaker(videoRef.current);
 
       let sessionToken: string;
       let sessionId: string;
@@ -543,6 +545,7 @@ export function useLiveAvatarSession() {
           setMicMuted(false);
           // Talk clock starts when the mic is first enabled (after intro).
           armMaxDurationTimer();
+          void preferMediaLoudspeaker(videoRef.current);
         });
 
         session.on(SessionEvent.SESSION_STATE_CHANGED, (state) => {
@@ -567,6 +570,7 @@ export function useLiveAvatarSession() {
           if (videoRef.current) {
             session.attach(videoRef.current);
             void videoRef.current.play().catch(() => null);
+            void preferMediaLoudspeaker(videoRef.current);
           }
           gate.streamReady = true;
           void maybeEnterReadyGate();
@@ -592,6 +596,8 @@ export function useLiveAvatarSession() {
           } catch (err) {
             debugLog("CONVERSATION_UNMUTE_FAILED", err);
           }
+          // Mic unmute can flip Android into call/earpiece mode — re-assert media speaker.
+          await preferMediaLoudspeaker(videoRef.current);
         };
 
         /**
@@ -840,6 +846,7 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return;
 
+    await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return;
@@ -852,6 +859,7 @@ export function useLiveAvatarSession() {
           /* ignore */
         }
       });
+      await preferMediaLoudspeaker(videoRef.current);
     }
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return;
