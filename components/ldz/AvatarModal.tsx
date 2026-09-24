@@ -2,49 +2,29 @@
 
 import { useEffect, useId, useRef } from "react";
 import Image from "next/image";
-import type { AvatarScenario } from "@/lib/avatar-scenarios";
+import type {
+  AvatarScenario,
+  ConversationLanguage,
+} from "@/lib/avatar-scenarios";
+import { resolveScenarioSession } from "@/lib/avatar-scenarios";
+import { getAvatarModalCopy } from "@/lib/avatar-modal-copy";
 import { useLiveAvatarSession } from "@/hooks/useLiveAvatarSession";
 import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 import { froydContent } from "@/lib/ldz-content";
-import type { AppStatus } from "@/lib/types";
 
 const READY_COUNTDOWN_MS = 30_000;
 
 type Props = {
   scenario: AvatarScenario;
+  language?: ConversationLanguage;
   open: boolean;
   creditsExhausted?: boolean;
   onClose: () => void;
 };
 
-function statusLabel(status: AppStatus): string {
-  switch (status) {
-    case "creating-session":
-    case "connecting":
-      return "Pripravujeme avatara…";
-    case "awaiting-ready":
-      return "Predtým než začnete";
-    case "ready":
-      return "Teraz môžete hovoriť";
-    case "user-speaking":
-      return "Počúvame vás…";
-    case "avatar-speaking":
-      return "Avatar hovorí — počkajte, kým dohovorí";
-    case "stopping":
-      return "Ukončujeme rozhovor…";
-    case "stopped":
-      return "Rozhovor ukončený";
-    case "disconnected":
-      return "Odpojené";
-    case "error":
-      return "Nepodarilo sa spojiť";
-    default:
-      return "Pripravené na spustenie";
-  }
-}
-
 export function AvatarModal({
   scenario,
+  language = "sk",
   open,
   creditsExhausted = false,
   onClose,
@@ -52,6 +32,8 @@ export function AvatarModal({
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const readyStartedRef = useRef(false);
+  const session = resolveScenarioSession(scenario, language);
+  const copy = getAvatarModalCopy(session.language);
   const {
     videoRef,
     status,
@@ -139,14 +121,14 @@ export function AvatarModal({
 
   async function handleStart() {
     await startSession({
-      avatarId: scenario.avatarId,
-      contextId: scenario.contextId || undefined,
-      voiceId: scenario.voiceId,
-      language: "sk",
-      openingText: scenario.openingText,
-      questionLimit: scenario.questionLimit,
-      questionLimitMessage: scenario.questionLimitMessage,
-      questionLimitFollowupMessage: scenario.questionLimitFollowupMessage,
+      avatarId: session.avatarId,
+      contextId: session.contextId,
+      voiceId: session.voiceId,
+      language: session.language,
+      openingText: session.openingText,
+      questionLimit: session.questionLimit,
+      questionLimitMessage: session.questionLimitMessage,
+      questionLimitFollowupMessage: session.questionLimitFollowupMessage,
     });
   }
 
@@ -163,17 +145,20 @@ export function AvatarModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
+      lang={session.language}
     >
       <button
         type="button"
         className="ldz-modal__backdrop"
-        aria-label="Zavrieť"
+        aria-label={copy.close}
         onClick={() => void handleClose()}
       />
       <div className="ldz-modal__panel">
         <div className="ldz-modal__header">
           <div>
-            <h2 id={titleId}>Rozhovor s {scenario.nameInstrumental}</h2>
+            <h2 id={titleId}>
+              {copy.title(scenario.nameInstrumental, scenario.name)}
+            </h2>
             <AiSimulationLabel compact />
           </div>
           <button
@@ -181,9 +166,9 @@ export function AvatarModal({
             type="button"
             className="ldz-modal__close"
             onClick={() => void handleClose()}
-            aria-label="Zavrieť rozhovor"
+            aria-label={copy.closeAria}
           >
-            Zavrieť
+            {copy.close}
           </button>
         </div>
 
@@ -207,32 +192,22 @@ export function AvatarModal({
             ) : null}
             {!streamVisible && !showStaticReady && (
               <div className="ldz-modal__placeholder">
-                <p>{statusLabel(status)}</p>
+                <p>{copy.status(status)}</p>
                 {isIdle && (
-                  <p className="ldz-modal__hint">
-                    Najprv si vypočujte predstavenie avatara. Hovorte až keď
-                    dohovorí. Maximálny čas rozhovoru je 120 sekúnd.
-                  </p>
+                  <p className="ldz-modal__hint">{copy.idleHint}</p>
                 )}
               </div>
             )}
             {awaitingReady ? (
               <div className="ldz-modal__ready-overlay" role="status">
-                <p className="ldz-modal__ready-title">Predtým než začnete</p>
-                <p className="ldz-modal__ready-copy">
-                  Nastavte si hlasitosť vášho zariadenia aby ste avatara zreteľne
-                  počuli. Po pripojení začne avatar svoje predstavenie —
-                  vypočujte si ho pozorne až do konca.
-                </p>
+                <p className="ldz-modal__ready-title">{copy.readyTitle}</p>
+                <p className="ldz-modal__ready-copy">{copy.readyCopy}</p>
                 <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
-                  Neskáčte avatarovi do reči. Ak začnete hovoriť skôr než
-                  dohovorí, začne vás okamžite počúvať a hneď odpovie na vašu
-                  otázku a predošlú odpoveď predčasne ukončí.
+                  {copy.readyEmphasis}
                 </p>
                 {!micPermissionGranted ? (
                   <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
-                    Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás
-                    iPhone vyzve.
+                    {copy.readyMicHint}
                   </p>
                 ) : (
                   <div
@@ -252,10 +227,8 @@ export function AvatarModal({
             ) : null}
             {preparingIntro ? (
               <div className="ldz-modal__ready-overlay" role="status">
-                <p className="ldz-modal__ready-title">Pripravujeme zvuk…</p>
-                <p className="ldz-modal__ready-copy">
-                  Hneď začne predstavenie. Pripravte sa počúvať.
-                </p>
+                <p className="ldz-modal__ready-title">{copy.preparingTitle}</p>
+                <p className="ldz-modal__ready-copy">{copy.preparingCopy}</p>
               </div>
             ) : null}
           </div>
@@ -264,13 +237,13 @@ export function AvatarModal({
         {status !== "idle" && !awaitingReady && !preparingIntro ? (
           <p className="ldz-modal__status" role="status" aria-live="polite">
             {questionLimitReached
-              ? "Limit otázok — ďalšie na kurze Prvá pomoc pre dušu"
-              : statusLabel(status)}
+              ? copy.questionLimitStatus
+              : copy.status(status)}
             {canControlMic && !questionLimitReached && !micMuted
-              ? " · Mikrofón zapnutý"
+              ? copy.micOn
               : null}
             {canControlMic && !questionLimitReached && micMuted
-              ? " · Mikrofón stlmený"
+              ? copy.micOff
               : null}
           </p>
         ) : null}
@@ -295,7 +268,7 @@ export function AvatarModal({
             >
               {creditsExhausted
                 ? froydContent.creditLimit.ctaDisabledLabel
-                : "Spustiť rozhovor"}
+                : copy.start}
             </button>
           ) : awaitingReady ? (
             <>
@@ -305,16 +278,14 @@ export function AvatarModal({
                 onClick={() => void handleStartNow()}
                 disabled={preparingIntro}
               >
-                {micPermissionGranted
-                  ? "Začať rozhovor hneď"
-                  : "Povoliť mikrofón a začať"}
+                {micPermissionGranted ? copy.startNow : copy.allowMicAndStart}
               </button>
               <button
                 type="button"
                 className="ldz-btn ldz-btn--danger"
                 onClick={() => void handleClose()}
               >
-                Ukončiť
+                {copy.end}
               </button>
             </>
           ) : canControlMic ? (
@@ -325,14 +296,14 @@ export function AvatarModal({
                 onClick={() => void toggleMic()}
                 aria-pressed={micMuted}
               >
-                {micMuted ? "Zapnúť mikrofón" : "Stlmiť mikrofón"}
+                {micMuted ? copy.unmute : copy.mute}
               </button>
               <button
                 type="button"
                 className="ldz-btn ldz-btn--danger"
                 onClick={() => void handleClose()}
               >
-                Ukončiť rozhovor
+                {copy.endSession}
               </button>
             </>
           ) : (
@@ -342,7 +313,7 @@ export function AvatarModal({
               onClick={() => void handleClose()}
               disabled={status === "stopping"}
             >
-              Ukončiť rozhovor
+              {copy.endSession}
             </button>
           )}
         </div>

@@ -2,7 +2,10 @@
 
 import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
-import type { AvatarScenario } from "@/lib/avatar-scenarios";
+import type {
+  AvatarScenario,
+  ConversationLanguage,
+} from "@/lib/avatar-scenarios";
 import { PUBLIC_AVATAR_SCENARIOS } from "@/lib/avatar-scenarios";
 import { froydContent } from "@/lib/ldz-content";
 import { AvatarScenarioCard } from "@/components/ldz/AvatarScenarioCard";
@@ -14,13 +17,21 @@ const AvatarModal = dynamic(
   { ssr: false }
 );
 
+type ActiveSession = {
+  scenario: AvatarScenario;
+  language: ConversationLanguage;
+};
+
 export function AvatarExperience() {
-  const [active, setActive] = useState<AvatarScenario | null>(null);
+  const [active, setActive] = useState<ActiveSession | null>(null);
   const { creditsExhausted } = useCreditsExhausted();
 
-  const handleLaunch = useCallback((scenario: AvatarScenario) => {
-    setActive(scenario);
-  }, []);
+  const handleLaunch = useCallback(
+    (scenario: AvatarScenario, language: ConversationLanguage) => {
+      setActive({ scenario, language });
+    },
+    []
+  );
 
   const handleClose = useCallback(() => {
     setActive(null);
@@ -56,8 +67,9 @@ export function AvatarExperience() {
 
       {active ? (
         <AvatarModal
-          key={active.id}
-          scenario={active}
+          key={`${active.scenario.id}-${active.language}`}
+          scenario={active.scenario}
+          language={active.language}
           open
           creditsExhausted={creditsExhausted}
           onClose={handleClose}

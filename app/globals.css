@@ -356,6 +356,16 @@ body {
   flex: 1;
 }
 
+.ldz-scenario-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.ldz-scenario-card__actions .ldz-btn {
+  width: 100%;
+}
+
 .ldz-scenario-card__name {
   margin: 0;
   color: var(--ldz-primary);

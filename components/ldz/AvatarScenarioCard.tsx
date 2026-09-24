@@ -1,8 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import type { AvatarScenario } from "@/lib/avatar-scenarios";
-import { isScenarioReady } from "@/lib/avatar-scenarios";
+import type {
+  AvatarScenario,
+  ConversationLanguage,
+} from "@/lib/avatar-scenarios";
+import {
+  isScenarioReady,
+  scenarioSupportsEnglish,
+} from "@/lib/avatar-scenarios";
 import { froydContent } from "@/lib/ldz-content";
 import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 
@@ -10,7 +16,7 @@ type Props = {
   scenario: AvatarScenario;
   isActiveSession: boolean;
   creditsExhausted?: boolean;
-  onLaunch: (scenario: AvatarScenario) => void;
+  onLaunch: (scenario: AvatarScenario, language: ConversationLanguage) => void;
 };
 
 export function AvatarScenarioCard({
@@ -21,12 +27,16 @@ export function AvatarScenarioCard({
 }: Props) {
   const ready = isScenarioReady(scenario);
   const launchDisabled = !ready || isActiveSession || creditsExhausted;
+  const showEnglish = scenarioSupportsEnglish(scenario);
   const showDevHint =
     process.env.NODE_ENV === "development" && !ready && scenario.quote;
 
   const buttonLabel = creditsExhausted
     ? froydContent.creditLimit.ctaDisabledLabel
     : scenario.ctaLabel;
+
+  const englishLabel =
+    scenario.english?.ctaLabel?.trim() || "Talk in English";
 
   return (
     <article className="ldz-scenario-card" id={`scenario-${scenario.slug}`}>
@@ -68,21 +78,42 @@ export function AvatarScenarioCard({
           </blockquote>
         ) : null}
 
-        <button
-          type="button"
-          className="ldz-btn ldz-btn--secondary"
-          disabled={launchDisabled}
-          onClick={() => onLaunch(scenario)}
-          aria-label={
-            creditsExhausted
-              ? `${scenario.ctaLabel} — ${froydContent.creditLimit.ctaDisabledLabel}`
-              : ready
-                ? scenario.ctaLabel
-                : `${scenario.ctaLabel} — zatiaľ nedostupné`
-          }
-        >
-          {buttonLabel}
-        </button>
+        <div className="ldz-scenario-card__actions">
+          <button
+            type="button"
+            className="ldz-btn ldz-btn--secondary"
+            disabled={launchDisabled}
+            onClick={() => onLaunch(scenario, "sk")}
+            aria-label={
+              creditsExhausted
+                ? `${scenario.ctaLabel} — ${froydContent.creditLimit.ctaDisabledLabel}`
+                : ready
+                  ? scenario.ctaLabel
+                  : `${scenario.ctaLabel} — zatiaľ nedostupné`
+            }
+          >
+            {buttonLabel}
+          </button>
+
+          {showEnglish ? (
+            <button
+              type="button"
+              className="ldz-btn ldz-btn--primary"
+              disabled={launchDisabled}
+              lang="en"
+              onClick={() => onLaunch(scenario, "en")}
+              aria-label={
+                creditsExhausted
+                  ? `${englishLabel} — ${froydContent.creditLimit.ctaDisabledLabel}`
+                  : englishLabel
+              }
+            >
+              {creditsExhausted
+                ? froydContent.creditLimit.ctaDisabledLabel
+                : englishLabel}
+            </button>
+          ) : null}
+        </div>
 
         <p className="ldz-scenario-card__disclosure">
           {froydContent.aiDisclosure.note}

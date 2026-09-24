@@ -1,3 +1,28 @@
+export type ConversationLanguage = "sk" | "en";
+
+/** Optional English pack — when present, the card can launch an EN session. */
+export type ScenarioEnglishPack = {
+  /** HeyGen Knowledge Base / Context UUID for English */
+  contextId: string;
+  /** Optional EN voice; falls back to the scenario’s default voice */
+  voiceId?: string;
+  ctaLabel?: string;
+  openingText?: string;
+  questionLimitMessage?: string;
+  questionLimitFollowupMessage?: string;
+};
+
+export type ResolvedScenarioSession = {
+  language: ConversationLanguage;
+  avatarId: string;
+  contextId?: string;
+  voiceId?: string;
+  openingText?: string;
+  questionLimit?: number;
+  questionLimitMessage?: string;
+  questionLimitFollowupMessage?: string;
+};
+
 export type AvatarScenario = {
   id: string;
   slug: string;
@@ -32,7 +57,8 @@ export type AvatarScenario = {
   questionLimitMessage?: string;
   /** Spoken on every further user turn after the limit (5th+). */
   questionLimitFollowupMessage?: string;
-
+  /** English session override (context + scripted lines). */
+  english?: ScenarioEnglishPack;
 };
 
 /**
@@ -40,7 +66,7 @@ export type AvatarScenario = {
  *
  * Env naming (avatar / context / voice per person):
  * - Eva:   NEXT_PUBLIC_EVA_*   (falls back to legacy NEXT_PUBLIC_DEFAULT_*)
- * - Peter: NEXT_PUBLIC_PETER_*
+ * - Peter: NEXT_PUBLIC_PETER_*  (+ optional NEXT_PUBLIC_PETER_CONTEXT_ID_EN / VOICE_ID_EN)
  * - Tomáš: NEXT_PUBLIC_TOMAS_*
  *
  * IMPORTANT: Next.js only inlines NEXT_PUBLIC_* when accessed via a static
@@ -54,6 +80,9 @@ function pickEnv(...values: Array<string | undefined>): string {
   }
   return "";
 }
+
+/** LiveAvatar EN context for Peter — override via env without a redeploy of the default. */
+const PETER_EN_CONTEXT_FALLBACK = "f107a300-f8bb-48c9-b6a5-47281469bcc5";
 
 const evaAvatarId = pickEnv(
   process.env.NEXT_PUBLIC_EVA_AVATAR_ID,
@@ -71,6 +100,11 @@ const evaVoiceId = pickEnv(
 const peterAvatarId = pickEnv(process.env.NEXT_PUBLIC_PETER_AVATAR_ID);
 const peterContextId = pickEnv(process.env.NEXT_PUBLIC_PETER_CONTEXT_ID);
 const peterVoiceId = pickEnv(process.env.NEXT_PUBLIC_PETER_VOICE_ID);
+const peterContextIdEn = pickEnv(
+  process.env.NEXT_PUBLIC_PETER_CONTEXT_ID_EN,
+  PETER_EN_CONTEXT_FALLBACK
+);
+const peterVoiceIdEn = pickEnv(process.env.NEXT_PUBLIC_PETER_VOICE_ID_EN);
 
 const tomasAvatarId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_AVATAR_ID);
 const tomasContextId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_CONTEXT_ID);
@@ -128,6 +162,19 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
       "Toto je už štvrtá otázka. Na ďalšie otázky ti rád odpoviem na kurze Prvá pomoc pre dušu.",
     questionLimitFollowupMessage:
       "Na ďalšie otázky ti rád odpoviem na kurze prvej pomoci pre dušu.",
+    english: peterContextIdEn
+      ? {
+          contextId: peterContextIdEn,
+          voiceId: peterVoiceIdEn || undefined,
+          ctaLabel: "Talk in English",
+          openingText:
+            "Hi, my name is Peter, I'm 45, and lately I've been thinking about changing jobs. It stopped making sense to me, but I can't imagine finding something better. The situation is bad. I used to work out, but now I'd rather just watch TV.",
+          questionLimitMessage:
+            "That's already the fourth question. I'm happy to answer more on the First Aid for the Soul course.",
+          questionLimitFollowupMessage:
+            "I'm happy to answer more questions on the First Aid for the Soul course.",
+        }
+      : undefined,
   },
   {
     id: "tomas",
@@ -198,4 +245,39 @@ export function getScenarioById(id: string): AvatarScenario | undefined {
 
 export function isScenarioReady(scenario: AvatarScenario): boolean {
   return Boolean(scenario.available && scenario.avatarId);
+}
+
+export function scenarioSupportsEnglish(scenario: AvatarScenario): boolean {
+  return Boolean(scenario.english?.contextId && scenario.avatarId);
+}
+
+/** Pick SK/EN context + scripted lines for a LiveAvatar session. */
+export function resolveScenarioSession(
+  scenario: AvatarScenario,
+  language: ConversationLanguage = "sk"
+): ResolvedScenarioSession {
+  if (language === "en" && scenario.english?.contextId) {
+    const en = scenario.english;
+    return {
+      language: "en",
+      avatarId: scenario.avatarId,
+      contextId: en.contextId,
+      voiceId: en.voiceId || scenario.voiceId,
+      openingText: en.openingText,
+      questionLimit: scenario.questionLimit,
+      questionLimitMessage: en.questionLimitMessage,
+      questionLimitFollowupMessage: en.questionLimitFollowupMessage,
+    };
+  }
+
+  return {
+    language: "sk",
+    avatarId: scenario.avatarId,
+    contextId: scenario.contextId || undefined,
+    voiceId: scenario.voiceId,
+    openingText: scenario.openingText,
+    questionLimit: scenario.questionLimit,
+    questionLimitMessage: scenario.questionLimitMessage,
+    questionLimitFollowupMessage: scenario.questionLimitFollowupMessage,
+  };
 }

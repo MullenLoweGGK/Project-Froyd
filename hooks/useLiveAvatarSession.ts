@@ -104,30 +104,52 @@ type IntroGate = {
 
 const DEFAULT_QUESTION_LIMIT = 4;
 
-function toHumanError(code: HumanErrorCode, technical?: string): string {
+function toHumanError(
+  code: HumanErrorCode,
+  technical?: string,
+  language: string = "sk"
+): string {
   if (process.env.NODE_ENV === "development" && technical) {
     console.error(`[LiveAvatar] ${code}:`, technical);
   }
 
+  const en = language === "en";
+
   switch (code) {
     case "missing-config":
-      return "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
+      return en
+        ? "This scenario isn’t ready yet. Please try another avatar."
+        : "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
     case "session-failed":
-      return "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
+      return en
+        ? "Couldn’t start the conversation. Please try again in a moment."
+        : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
     case "credit-limit":
       return froydContent.creditLimit.message;
     case "mic-denied":
-      return "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v nastaveniach prehliadača / iPhonu (Nastavenia → Safari → Mikrofón) a skúste znova.";
+      return en
+        ? "We need microphone access so you can talk to the avatar. Allow the mic in your browser / iPhone settings (Settings → Safari → Microphone) and try again."
+        : "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v nastaveniach prehliadača / iPhonu (Nastavenia → Safari → Mikrofón) a skúste znova.";
     case "connection":
-      return "Pripojenie sa nepodarilo. Skontrolujte internet a skúste znova.";
+      return en
+        ? "Connection failed. Check your internet and try again."
+        : "Pripojenie sa nepodarilo. Skontrolujte internet a skúste znova.";
     case "stream":
-      return "Video avatára sa nepodarilo načítať. Skúste rozhovor spustiť znova.";
+      return en
+        ? "Couldn’t load the avatar video. Please start the conversation again."
+        : "Video avatára sa nepodarilo načítať. Skúste rozhovor spustiť znova.";
     case "disconnect":
-      return "Rozhovor sa neočakávane ukončil. Môžete ho spustiť znova.";
+      return en
+        ? "The conversation ended unexpectedly. You can start again."
+        : "Rozhovor sa neočakávane ukončil. Môžete ho spustiť znova.";
     case "unsupported":
-      return "Váš prehliadač nepodporuje hlasový rozhovor. Skúste novší prehliadač.";
+      return en
+        ? "Your browser doesn’t support voice conversation. Try a newer browser."
+        : "Váš prehliadač nepodporuje hlasový rozhovor. Skúste novší prehliadač.";
     default:
-      return "Niečo sa pokazilo. Skúste to prosím znova.";
+      return en
+        ? "Something went wrong. Please try again."
+        : "Niečo sa pokazilo. Skúste to prosím znova.";
   }
 }
 
@@ -258,6 +280,8 @@ export function useLiveAvatarSession() {
   const introGateRef = useRef<IntroGate | null>(null);
   /** iOS only shows the mic prompt during a user gesture — grant on "Spustiť". */
   const micPermissionGrantedRef = useRef(false);
+  /** Session UI language for human-readable errors (sk | en). */
+  const languageRef = useRef("sk");
 
   const [status, setStatus] = useState<AppStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -375,7 +399,9 @@ export function useLiveAvatarSession() {
       void (async () => {
         await stopSession();
         setError(
-          "Dosiahli ste maximálny čas rozhovoru (120 sekúnd). Môžete spustiť nový rozhovor."
+          languageRef.current === "en"
+            ? "You’ve reached the maximum conversation time (120 seconds). You can start a new conversation."
+            : "Dosiahli ste maximálny čas rozhovoru (120 sekúnd). Môžete spustiť nový rozhovor."
         );
       })();
     }, MAX_SESSION_MS);
@@ -404,14 +430,16 @@ export function useLiveAvatarSession() {
 
   const startSession = useCallback(
     async (config: LiveAvatarConfig) => {
+      languageRef.current = config.language === "en" ? "en" : "sk";
+
       if (!config.avatarId) {
-        setError(toHumanError("missing-config"));
+        setError(toHumanError("missing-config", undefined, languageRef.current));
         setStatus("error");
         return;
       }
 
       if (typeof window === "undefined" || !navigator?.mediaDevices?.getUserMedia) {
-        setError(toHumanError("unsupported"));
+        setError(toHumanError("unsupported", undefined, languageRef.current));
         setStatus("error");
         return;
       }
@@ -470,7 +498,7 @@ export function useLiveAvatarSession() {
           const body = await res.json().catch(() => ({ error: res.statusText }));
           if (isCreditsExhaustedFromResponse(res.status, body)) {
             markCreditsExhausted();
-            setError(toHumanError("credit-limit", String((body as { detail?: string }).detail ?? "")));
+            setError(toHumanError("credit-limit", String((body as { detail?: string }).detail ?? ""), languageRef.current));
             setStatus("error");
             return;
           }
@@ -484,7 +512,7 @@ export function useLiveAvatarSession() {
         sessionId = data.sessionId;
         clearCreditsExhausted();
       } catch (err) {
-        setError(toHumanError("session-failed", String(err)));
+        setError(toHumanError("session-failed", String(err), languageRef.current));
         setStatus("error");
         return;
       }
@@ -620,7 +648,7 @@ export function useLiveAvatarSession() {
           resetIntroGate();
           if (reason !== SessionDisconnectReason.CLIENT_INITIATED) {
             setStatus("disconnected");
-            setError(toHumanError("disconnect"));
+            setError(toHumanError("disconnect", undefined, languageRef.current));
           }
           if (sessionRef.current === sessionLike) {
             sessionRef.current = null;
@@ -836,8 +864,10 @@ export function useLiveAvatarSession() {
               : "stream";
         const human =
           /Errors validating session token/i.test(msg)
-            ? "Nepodarilo sa spustiť avatara. Skontrolujte voice ID / knowledge base ID v HeyGen LiveAvatar (avatar môže byť v poriadku, ale hlas alebo kontext nie)."
-            : toHumanError(code, msg);
+            ? languageRef.current === "en"
+              ? "Couldn’t start the avatar. Check the voice ID / knowledge base ID in HeyGen LiveAvatar (the avatar may be fine, but the voice or context may not)."
+              : "Nepodarilo sa spustiť avatara. Skontrolujte voice ID / knowledge base ID v HeyGen LiveAvatar (avatar môže byť v poriadku, ale hlas alebo kontext nie)."
+            : toHumanError(code, msg, languageRef.current);
         setError(msg && msg !== "undefined" ? `${human} (${msg})` : human);
         if (process.env.NODE_ENV === "development") {
           console.error("[LiveAvatar] session.start failed:", err);
@@ -883,7 +913,7 @@ export function useLiveAvatarSession() {
         console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
         gate.introStarted = false;
         setPreparingIntro(false);
-        setError(toHumanError("mic-denied", micErrorDetail(err)));
+        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
         setStatus("awaiting-ready");
         return false;
       }
