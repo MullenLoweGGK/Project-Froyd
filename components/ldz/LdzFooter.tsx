@@ -7,7 +7,9 @@ export function LdzFooter() {
       <div className="ldz-container ldz-footer__inner">
         <div className="ldz-footer__brand">
           <p className="ldz-footer__org">Liga za duševné zdravie</p>
-          <p className="ldz-footer__tag">FROYD — vzdelávacia AI simulácia</p>
+          <p className="ldz-footer__tag">
+            PPDZ — nácvik rozhovoru (súkromné kurzové prostredie)
+          </p>
           <p className="ldz-footer__disclosure">{froydContent.aiDisclosure.note}</p>
         </div>
       </div>

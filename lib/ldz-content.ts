@@ -1,6 +1,6 @@
 /**
- * Structured content for the FROYD microsite.
- * Source of truth: docs/froyd-content.md + client layout updates.
+ * Structured content for the PPDZ courses microsite (branch: courses).
+ * Campaign landing stays on main / froyd.app.
  */
 
 export const PRVA_POMOC_URL = "https://dusevnezdravie.sk/stranka/prva-pomoc/";
@@ -13,22 +13,24 @@ export const HELPLINE_LABEL = "Linka dôvery Nezábudka";
 
 export const froydContent = {
   meta: {
-    title: "FROYD — Vyskúšajte si rozhovor, ktorý môže pomôcť | Liga za duševné zdravie",
+    title:
+      "PPDZ — Nácvik rozhovoru s AI avatarmi | Liga za duševné zdravie",
     description:
-      "Porozprávajte sa s AI avatarmi Ligy za duševné zdravie. Položte tri otázky a skúste odhaliť, čo človek prežíva. Vzdelávacia simulácia — nie diagnostický nástroj.",
+      "Súkromné prostredie pre účastníkov kurzu Prvá pomoc pre dušu. Vzdelávacia AI simulácia rozhovoru — nie diagnostický nástroj.",
   },
-  /** Challenge headline sits above avatar cards; course CTA is the navy band */
+  /** Challenge headline sits above avatar cards; navy band = course guidance */
   infoCta: {
-    challengeHeadline: "Dokážete spoznať, čo ich trápi?",
+    challengeHeadline: "Nácvik citlivého rozhovoru",
     challengeParagraphs: [
-      "Nie všetky duševné problémy sú viditeľné na prvý pohľad. Niekedy však veľa prezradí aj obyčajný rozhovor. Na Slovensku je pritom duševné zdravie stále témou, o ktorej sa mnohí ostýchajú hovoriť. Zo strachu, hanby alebo jednoducho preto, že nevedia, ako začať.",
-      "Preto sme vytvorili Projekt FROYD - AI avatarov, ktorí dokonale imitujú rôzne duševné problémy. AI avatar vám umožní skúšať, robiť chyby alebo sa pýtať citlivé otázky v bezpečnom prostredí. Bez strachu, že niekomu ublížite.",
+      "Toto prostredie je určené účastníkom kurzu Prvá pomoc pre dušu. S AI avatarmi si môžete bezpečne vyskúšať vedenie citlivého rozhovoru — skúšať, robiť chyby a pýtať sa bez strachu, že niekomu ublížite.",
+      "Nie všetky duševné problémy sú viditeľné na prvý pohľad. Nácvik na simulácii vám pomôže všimnúť si signály a viesť rozhovor s väčšou istotou.",
     ],
-    courseHeadline: "Chcete vedieť viac?",
+    courseHeadline: "Ako na to",
     courseParagraphs: [
-      "Ak vás rozhovor zaujal, na kurze Prvá pomoc pre dušu sa naučíte rozpoznávať varovné signály, viesť citlivý rozhovor a nasmerovať človeka k odbornej pomoci.",
+      "Vyberte si avatara, vypočujte predstavenie a položte niekoľko otázok. Hovorte prirodzene — rovnako ako na kurze. Scenár je vzdelávacia simulácia, nie diagnostika.",
     ],
-    buttonLabel: "Prihlásiť sa na kurz",
+    /** Empty = no public signup CTA on the courses site */
+    buttonLabel: "",
     href: PRVA_POMOC_URL,
   },
   aiDisclosure: {
@@ -38,13 +40,12 @@ export const froydContent = {
   },
   /** Shown when HeyGen LiveAvatar credits / quota are exhausted */
   creditLimit: {
-    body: "Prepáčte, dnešný limit rozhovorov s AI avatarmi bol vyčerpaný, ale stretnúť sa s nimi môžete na kurzoch Prvej pomoci pre dušu.",
-    moreInfoBefore: "Viac informácií nájdete na webe ",
+    body: "Prepáčte, limit rozhovorov s AI avatarmi je momentálne vyčerpaný. Skúste to prosím neskôr alebo sa obráťte na lektora kurzu.",
+    moreInfoBefore: "Viac o kurze nájdete na webe ",
     moreInfoLinkLabel: "Ligy za duševné zdravie",
     moreInfoHref: PRVA_POMOC_URL,
-    /** Plain-text fallback for modal / session errors */
     message:
-      "Prepáčte, dnešný limit rozhovorov s AI avatarmi bol vyčerpaný, ale stretnúť sa s nimi môžete na kurzoch Prvej pomoci pre dušu. Viac informácií nájdete na webe Ligy za duševné zdravie.",
+      "Prepáčte, limit rozhovorov s AI avatarmi je momentálne vyčerpaný. Skúste to prosím neskôr alebo sa obráťte na lektora kurzu.",
     ctaDisabledLabel: "Dočasne nedostupné",
   },
 } as const;

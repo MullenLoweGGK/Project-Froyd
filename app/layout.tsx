@@ -16,9 +16,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const shouldNoIndex =
-  process.env.VERCEL_ENV === "preview" ||
-  process.env.NEXT_PUBLIC_NOINDEX === "true";
+/** Courses / PPDZ deployment — never index (branch `courses` → ppdz.froyd.app). */
+const shouldNoIndex = process.env.NEXT_PUBLIC_NOINDEX !== "false";
 
 function resolveSiteUrl(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -31,7 +30,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(resolveSiteUrl()),
   title: froydContent.meta.title,
   description: froydContent.meta.description,
-  robots: shouldNoIndex ? { index: false, follow: false } : { index: true, follow: true },
+  robots: shouldNoIndex
+    ? { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false, noimageindex: true } }
+    : { index: true, follow: true },
   openGraph: {
     title: froydContent.meta.title,
     description: froydContent.meta.description,
@@ -42,7 +43,7 @@ export const metadata: Metadata = {
         url: "/ldz/hero-illustration.png",
         width: 1200,
         height: 425,
-        alt: "Liga za duševné zdravie — FROYD",
+        alt: "Liga za duševné zdravie — PPDZ nácvik",
       },
     ],
   },

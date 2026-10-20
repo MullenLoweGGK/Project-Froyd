@@ -31,14 +31,16 @@ export function ExternalCtaSection() {
           {courseParagraphs.map((p) => (
             <p key={p}>{p}</p>
           ))}
-          <a
-            href={href}
-            className="ldz-btn ldz-btn--on-hero"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {buttonLabel}
-          </a>
+          {buttonLabel ? (
+            <a
+              href={href}
+              className="ldz-btn ldz-btn--on-hero"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {buttonLabel}
+            </a>
+          ) : null}
         </div>
       </div>
     </section>
