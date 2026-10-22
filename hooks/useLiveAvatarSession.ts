@@ -25,6 +25,11 @@ async function requestMicrophoneAccess(): Promise<void> {
   stream.getTracks().forEach((t) => t.stop());
 }
 
+/** Open mic under the current user gesture; caller must stop tracks when done. */
+async function acquireMicrophoneStream(): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({ audio: true });
+}
+
 /** Prefer Permissions API — a second getUserMedia probe often fails spuriously on iOS. */
 async function readMicrophonePermissionState(): Promise<
   PermissionState | "unknown"
@@ -51,8 +56,6 @@ async function ensureMicrophoneAccess(): Promise<boolean> {
     return true;
   } catch (err) {
     console.error("[LiveAvatar] mic ensure failed:", micErrorDetail(err));
-    // If Permissions API was unavailable, a later SDK unmute may still work —
-    // only hard-fail on explicit denial.
     const name = err && typeof err === "object" ? (err as { name?: string }).name : "";
     if (name === "NotAllowedError" || name === "PermissionDeniedError") {
       return false;
@@ -489,12 +492,17 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // iOS Safari: request mic on the tap that starts the session (user gesture).
-      // Never block session create if this fails — user can grant on "Začať rozhovor hneď".
-      // Never surface a red mic error here (it is a common false positive after Settings grant).
-      const grantedOnStart = await ensureMicrophoneAccess();
-      micPermissionGrantedRef.current = grantedOnStart;
-      setMicPermissionGranted(grantedOnStart);
+      // Campaign (with intro): probe mic on "Spustiť" under the gesture.
+      // Courses (no intro): skip probe here — Safari needs getUserMedia + unmute on the
+      // later "Začať rozhovor hneď" click, otherwise the avatar never hears the user.
+      if (config.openingText?.trim()) {
+        const grantedOnStart = await ensureMicrophoneAccess();
+        micPermissionGrantedRef.current = grantedOnStart;
+        setMicPermissionGranted(grantedOnStart);
+      } else {
+        micPermissionGrantedRef.current = false;
+        setMicPermissionGranted(false);
+      }
 
       try {
         await preferMediaLoudspeaker(videoRef.current);
@@ -939,11 +947,7 @@ export function useLiveAvatarSession() {
 
   /**
    * After disclaimer / "start now": unlock audio, prime media, then either
-   * speak openingText or (courses) unmute immediately so the user can speak first.
-   *
-   * Important for Safari (Mac + iOS): do not await long delays before the first
-   * voiceChat.unmute() when there is no intro — the user-gesture chain breaks and
-   * the SDK never gets a live mic, so the avatar never hears the participant.
+   * speak openingText or (courses) open mic + unmute under the same click.
    */
   const confirmReady = useCallback(async (): Promise<boolean> => {
     const gate = introGateRef.current;
@@ -960,7 +964,90 @@ export function useLiveAvatarSession() {
       hasOpening: Boolean(gate.openingText),
     });
 
-    // Keep mic ensure under the click. Prefer Permissions API when already granted.
+    // ── Courses: no intro — mic acquire + unmute must stay in the click chain ──
+    if (!gate.openingText) {
+      let probe: MediaStream | null = null;
+      try {
+        // Always open the mic on this click (do not trust a prior probe / Permissions API).
+        probe = await acquireMicrophoneStream();
+        micPermissionGrantedRef.current = true;
+        setMicPermissionGranted(true);
+      } catch (err) {
+        console.error("[LiveAvatar] mic acquire on confirm:", micErrorDetail(err));
+        gate.introStarted = false;
+        setPreparingIntro(false);
+        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+        setStatus("awaiting-ready");
+        return false;
+      }
+
+      if (introGateRef.current !== gate || sessionRef.current !== session) {
+        probe.getTracks().forEach((t) => t.stop());
+        return false;
+      }
+
+      gate.conversationActive = true;
+      setPreparingIntro(false);
+
+      try {
+        await session.voiceChat.unmute();
+        debugLog("CONVERSATION_LIVE", {
+          sessionId: gate.sessionId,
+          stillMuted: session.voiceChat.isMuted,
+        });
+      } catch (err) {
+        debugLog("CONVERSATION_UNMUTE_FAILED", err);
+        probe.getTracks().forEach((t) => t.stop());
+        gate.introStarted = false;
+        gate.conversationActive = false;
+        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+        setStatus("awaiting-ready");
+        return false;
+      }
+
+      // Release our probe only after SDK unmute — keeps Safari gesture/permission warm.
+      probe.getTracks().forEach((t) => t.stop());
+
+      if (session.voiceChat.isMuted) {
+        try {
+          await session.voiceChat.unmute();
+        } catch (err) {
+          debugLog("CONVERSATION_UNMUTE_STILL_MUTED", err);
+        }
+      }
+
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        videoRef.current.defaultMuted = false;
+        videoRef.current.volume = 1;
+        try {
+          session.attach(videoRef.current);
+        } catch {
+          /* ignore */
+        }
+        try {
+          await videoRef.current.play();
+        } catch {
+          /* ignore */
+        }
+      }
+      await unlockBrowserAudio();
+      await preferMediaLoudspeaker(videoRef.current);
+
+      if (session.voiceChat.isMuted) {
+        gate.introStarted = false;
+        gate.conversationActive = false;
+        setError(toHumanError("mic-denied", "voiceChat still muted", languageRef.current));
+        setStatus("awaiting-ready");
+        return false;
+      }
+
+      setError(null);
+      setStatus("ready");
+      return true;
+    }
+
+    // ── Campaign path (scripted intro) ──
     if (!micPermissionGrantedRef.current) {
       const granted = await ensureMicrophoneAccess();
       micPermissionGrantedRef.current = granted;
@@ -985,52 +1072,6 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    if (videoRef.current) {
-      videoRef.current.muted = false;
-      videoRef.current.defaultMuted = false;
-      videoRef.current.volume = 1;
-      try {
-        session.attach(videoRef.current);
-      } catch {
-        /* ignore */
-      }
-      try {
-        await videoRef.current.play();
-      } catch {
-        /* ignore */
-      }
-      await preferMediaLoudspeaker(videoRef.current);
-    }
-
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
-
-    // Courses path: no scripted intro — unmute immediately under the user gesture.
-    if (!gate.openingText) {
-      setPreparingIntro(false);
-      gate.conversationActive = true;
-      try {
-        await session.voiceChat.unmute();
-        debugLog("CONVERSATION_LIVE", { sessionId: gate.sessionId });
-      } catch (err) {
-        debugLog("CONVERSATION_UNMUTE_FAILED", err);
-        // One quick retry — Safari sometimes needs a second unmute after attach/play.
-        try {
-          await session.voiceChat.unmute();
-        } catch (retryErr) {
-          debugLog("CONVERSATION_UNMUTE_RETRY_FAILED", retryErr);
-          gate.introStarted = false;
-          gate.conversationActive = false;
-          setError(toHumanError("mic-denied", micErrorDetail(retryErr), languageRef.current));
-          setStatus("awaiting-ready");
-          return false;
-        }
-      }
-      await preferMediaLoudspeaker(videoRef.current);
-      setStatus("ready");
-      return true;
-    }
-
-    // Campaign path: keep mic muted through the scripted intro.
     try {
       await session.voiceChat.mute();
     } catch (err) {

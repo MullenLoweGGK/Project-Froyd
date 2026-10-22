@@ -34,13 +34,13 @@ const sk: ModalCopy = {
     "Po spustení sa prihovorte avatarovi ako prví. Maximálny čas rozhovoru je 10 minút.",
   readyTitle: "Predtým než začnete",
   readyCopy:
-    "Nastavte si hlasitosť zariadenia, aby ste avatara zreteľne počuli. Po štarte rozhovoru sa prihovorte vy — avatar sa sám nepredstaví.",
+    "Nastavte si hlasitosť zariadenia. Loading pruh môžete ignorovať — rozhovor spustíte tlačidlom nižšie. Po štarte sa prihovorte vy; avatar sa sám nepredstaví.",
   readyEmphasis:
     "Hovorte prirodzene, ako na kurze. Počkajte, kým avatar dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Kliknite na „Povoliť mikrofón a začať“. Ak Safari vypýta prístup, povoľte mikrofón a kliknite znova.",
-  preparingTitle: "Pripravujeme zvuk…",
-  preparingCopy: "O chvíľu môžete začať hovoriť.",
+    "Kliknite na „Povoliť mikrofón a začať“. Ak Safari vypýta prístup, povoľte mikrofón. Až uvidíte „Teraz môžete hovoriť“, začnite hovoriť.",
+  preparingTitle: "Pripravujeme mikrofón…",
+  preparingCopy: "Ešte chvíľu — zapíname počúvanie.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
   micOn: " · Mikrofón zapnutý",
   micOff: " · Mikrofón stlmený",

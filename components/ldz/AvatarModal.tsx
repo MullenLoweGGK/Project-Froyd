@@ -84,14 +84,14 @@ export function AvatarModal({
 
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
 
-  // After 30s, auto-start only if mic was already granted on "Spustiť".
-  // On iOS, a timer has no user gesture — without prior grant getUserMedia fails
-  // silently (no prompt) and only shows a red error.
+  // Campaign only: auto-start after strip when mic was granted on "Spustiť".
+  // Courses (no openingText): never auto-start — Safari needs the button click for mic+unmute.
   useEffect(() => {
     if (!awaitingReady) {
       readyStartedRef.current = false;
       return;
     }
+    if (!session.openingText) return;
     if (!micPermissionGranted) return;
 
     const timer = window.setTimeout(() => {
@@ -101,7 +101,7 @@ export function AvatarModal({
     }, READY_COUNTDOWN_MS);
 
     return () => window.clearTimeout(timer);
-  }, [awaitingReady, confirmReady, micPermissionGranted]);
+  }, [awaitingReady, confirmReady, micPermissionGranted, session.openingText]);
 
   if (!open) return null;
 
@@ -206,7 +206,7 @@ export function AvatarModal({
                 <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
                   {copy.readyEmphasis}
                 </p>
-                {!micPermissionGranted ? (
+                {!session.openingText || !micPermissionGranted ? (
                   <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
                     {copy.readyMicHint}
                   </p>
