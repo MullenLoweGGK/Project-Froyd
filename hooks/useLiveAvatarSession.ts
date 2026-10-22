@@ -166,8 +166,8 @@ function toHumanError(
       return froydContent.creditLimit.message;
     case "mic-denied":
       return en
-        ? "Please allow the microphone, then tap “Start conversation now” again. On iPhone: Settings → Safari → Microphone."
-        : "Povoľte mikrofón a znova ťuknite na „Začať rozhovor hneď“. Na iPhone: Nastavenia → Safari → Mikrofón.";
+        ? "Please allow the microphone, then click “Start conversation now” again. In Safari: Safari → Settings for This Website → Microphone, or System Settings → Privacy & Security → Microphone."
+        : "Povoľte mikrofón a znova kliknite na „Začať rozhovor hneď“. V Safari: Safari → Nastavenia pre tento web → Mikrofón, alebo Systémové nastavenia → Súkromie a bezpečnosť → Mikrofón.";
     case "connection":
       return en
         ? "Connection failed. Check your internet and try again."
