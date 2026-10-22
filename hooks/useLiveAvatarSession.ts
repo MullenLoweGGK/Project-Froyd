@@ -161,10 +161,22 @@ function toHumanError(
       return en
         ? "This scenario isn’t ready yet. Please try another avatar."
         : "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
-    case "session-failed":
-      return en
-        ? "Couldn’t start the conversation. Please try again in a moment."
-        : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
+    case "session-failed": {
+      const hint =
+        technical &&
+        /LIVEAVATAR|API key|not configured|unauthorized|401|credit/i.test(
+          technical
+        )
+          ? en
+            ? " Check that LIVEAVATAR_API_KEY and avatar IDs are set on this Vercel project."
+            : " Skontrolujte, či má tento Vercel projekt nastavené LIVEAVATAR_API_KEY a ID avatarov."
+          : "";
+      return (
+        (en
+          ? "Couldn’t start the conversation. Please try again in a moment."
+          : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.") + hint
+      );
+    }
     case "credit-limit":
       return froydContent.creditLimit.message;
     case "mic-denied":

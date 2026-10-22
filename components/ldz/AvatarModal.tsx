@@ -83,15 +83,16 @@ export function AvatarModal({
   }, [open, stopSession]);
 
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
+  const isCoursesFlow = !session.openingText;
 
   // Campaign only: auto-start after strip when mic was granted on "Spustiť".
-  // Courses (no openingText): never auto-start — Safari needs the button click for mic+unmute.
+  // Courses: never auto-start — mic+unmute must stay on the button click.
   useEffect(() => {
     if (!awaitingReady) {
       readyStartedRef.current = false;
       return;
     }
-    if (!session.openingText) return;
+    if (isCoursesFlow) return;
     if (!micPermissionGranted) return;
 
     const timer = window.setTimeout(() => {
@@ -101,12 +102,11 @@ export function AvatarModal({
     }, READY_COUNTDOWN_MS);
 
     return () => window.clearTimeout(timer);
-  }, [awaitingReady, confirmReady, micPermissionGranted, session.openingText]);
+  }, [awaitingReady, confirmReady, micPermissionGranted, isCoursesFlow]);
 
   if (!open) return null;
 
   const canControlMic = status === "ready" || status === "user-speaking";
-  // Live stream only after disclaimer — during awaiting-ready show static photo.
   const streamVisible =
     status === "ready" ||
     status === "user-speaking" ||
@@ -140,6 +140,10 @@ export function AvatarModal({
     if (!ok) readyStartedRef.current = false;
   }
 
+  const readyPrimaryLabel = micPermissionGranted
+    ? copy.startNow
+    : copy.allowMicAndStart;
+
   return (
     <div
       className="ldz-modal"
@@ -154,7 +158,9 @@ export function AvatarModal({
         aria-label={copy.close}
         onClick={() => void handleClose()}
       />
-      <div className="ldz-modal__panel">
+      <div
+        className={`ldz-modal__panel${awaitingReady || preparingIntro ? " ldz-modal__panel--ready" : ""}`}
+      >
         <div className="ldz-modal__header">
           <div>
             <h2 id={titleId}>
@@ -200,17 +206,16 @@ export function AvatarModal({
               </div>
             )}
             {awaitingReady ? (
-              <div className="ldz-modal__ready-overlay" role="status">
+              <div className="ldz-modal__ready-overlay">
                 <p className="ldz-modal__ready-title">{copy.readyTitle}</p>
                 <p className="ldz-modal__ready-copy">{copy.readyCopy}</p>
                 <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
                   {copy.readyEmphasis}
                 </p>
-                {!session.openingText || !micPermissionGranted ? (
-                  <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
-                    {copy.readyMicHint}
-                  </p>
-                ) : (
+                <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
+                  {copy.readyMicHint}
+                </p>
+                {!isCoursesFlow && micPermissionGranted ? (
                   <div
                     className="ldz-modal__ready-progress"
                     aria-hidden="true"
@@ -223,7 +228,24 @@ export function AvatarModal({
                       }}
                     />
                   </div>
-                )}
+                ) : null}
+                <div className="ldz-modal__ready-actions">
+                  <button
+                    type="button"
+                    className="ldz-btn ldz-btn--secondary"
+                    onClick={() => void handleStartNow()}
+                    disabled={preparingIntro}
+                  >
+                    {readyPrimaryLabel}
+                  </button>
+                  <button
+                    type="button"
+                    className="ldz-btn ldz-btn--danger"
+                    onClick={() => void handleClose()}
+                  >
+                    {copy.end}
+                  </button>
+                </div>
               </div>
             ) : null}
             {preparingIntro ? (
@@ -249,7 +271,7 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        {error && !awaitingReady ? (
+        {error ? (
           <p className="ldz-modal__error" role="alert">
             {error}
           </p>
@@ -259,65 +281,50 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        <div className="ldz-modal__controls">
-          {isIdle ? (
-            <button
-              type="button"
-              className="ldz-btn ldz-btn--secondary"
-              onClick={() => void handleStart()}
-              disabled={creditsExhausted}
-            >
-              {creditsExhausted
-                ? froydContent.creditLimit.ctaDisabledLabel
-                : copy.start}
-            </button>
-          ) : awaitingReady ? (
-            <>
+        {/* Footer controls — hidden during ready gate (CTA lives in the overlay). */}
+        {!awaitingReady && !preparingIntro ? (
+          <div className="ldz-modal__controls">
+            {isIdle ? (
               <button
                 type="button"
                 className="ldz-btn ldz-btn--secondary"
-                onClick={() => void handleStartNow()}
-                disabled={preparingIntro}
+                onClick={() => void handleStart()}
+                disabled={creditsExhausted}
               >
-                {micPermissionGranted ? copy.startNow : copy.allowMicAndStart}
+                {creditsExhausted
+                  ? froydContent.creditLimit.ctaDisabledLabel
+                  : copy.start}
               </button>
+            ) : canControlMic ? (
+              <>
+                <button
+                  type="button"
+                  className="ldz-btn ldz-btn--primary"
+                  onClick={() => void toggleMic()}
+                  aria-pressed={micMuted}
+                >
+                  {micMuted ? copy.unmute : copy.mute}
+                </button>
+                <button
+                  type="button"
+                  className="ldz-btn ldz-btn--danger"
+                  onClick={() => void handleClose()}
+                >
+                  {copy.endSession}
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 className="ldz-btn ldz-btn--danger"
                 onClick={() => void handleClose()}
-              >
-                {copy.end}
-              </button>
-            </>
-          ) : canControlMic ? (
-            <>
-              <button
-                type="button"
-                className="ldz-btn ldz-btn--primary"
-                onClick={() => void toggleMic()}
-                aria-pressed={micMuted}
-              >
-                {micMuted ? copy.unmute : copy.mute}
-              </button>
-              <button
-                type="button"
-                className="ldz-btn ldz-btn--danger"
-                onClick={() => void handleClose()}
+                disabled={status === "stopping"}
               >
                 {copy.endSession}
               </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="ldz-btn ldz-btn--danger"
-              onClick={() => void handleClose()}
-              disabled={status === "stopping"}
-            >
-              {copy.endSession}
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
