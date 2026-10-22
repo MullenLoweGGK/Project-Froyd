@@ -181,20 +181,16 @@ function toHumanError(
         ? "This scenario isn’t ready yet. Please try another avatar."
         : "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
     case "session-failed": {
-      const hint =
-        technical &&
-        /LIVEAVATAR|API key|not configured|unauthorized|401|credit/i.test(
-          technical
-        )
-          ? en
-            ? " Check that LIVEAVATAR_API_KEY and avatar IDs are set on this Vercel project."
-            : " Skontrolujte, či má tento Vercel projekt nastavené LIVEAVATAR_API_KEY a ID avatarov."
-          : "";
-      return (
-        (en
-          ? "Couldn’t start the conversation. Please try again in a moment."
-          : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.") + hint
-      );
+      const base = en
+        ? "Couldn’t start the conversation. Please try again in a moment."
+        : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
+      // Only hint on explicit missing-key errors — not every 401/credit string.
+      if (technical && /LIVEAVATAR_API_KEY is not configured/i.test(technical)) {
+        return en
+          ? `${base} Server is missing LIVEAVATAR_API_KEY on this Vercel project (Production).`
+          : `${base} Na tomto Vercel projekte chýba LIVEAVATAR_API_KEY (Production).`;
+      }
+      return base;
     }
     case "credit-limit":
       return froydContent.creditLimit.message;
