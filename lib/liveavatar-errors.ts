@@ -97,6 +97,16 @@ export function classifyLiveAvatarHttpError(
     return new LiveAvatarApiError(status, "validation", detail);
   }
 
+  if (status === 502 || status === 503 || status === 504) {
+    return new LiveAvatarApiError(
+      status,
+      "upstream",
+      detail.includes("Non-JSON") || detail.includes("Service Temporarily")
+        ? `LiveAvatar API temporarily unavailable (HTTP ${status})`
+        : detail
+    );
+  }
+
   return new LiveAvatarApiError(status, "upstream", detail);
 }
 

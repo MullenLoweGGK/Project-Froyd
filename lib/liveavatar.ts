@@ -51,7 +51,16 @@ export async function getLiveAvatarCredits(): Promise<LiveAvatarCredits> {
       },
       cache: "no-store",
     });
-    raw = await res.json().catch(() => ({ error: "Non-JSON response" }));
+    const text = await res.text();
+    try {
+      raw = text ? JSON.parse(text) : {};
+    } catch {
+      raw = {
+        error: "Non-JSON response",
+        status: res.status,
+        body: text.slice(0, 240),
+      };
+    }
   } catch (networkErr) {
     throw new Error(
       `Network error calling LiveAvatar credits API: ${String(networkErr)}`
@@ -113,7 +122,16 @@ export async function createLiveAvatarSession(
       },
       body: JSON.stringify(body),
     });
-    raw = await res.json().catch(() => ({ error: "Non-JSON response" }));
+    const text = await res.text();
+    try {
+      raw = text ? JSON.parse(text) : {};
+    } catch {
+      raw = {
+        error: "Non-JSON response",
+        status: res.status,
+        body: text.slice(0, 240),
+      };
+    }
   } catch (networkErr) {
     throw new Error(`Network error calling LiveAvatar API: ${String(networkErr)}`);
   }

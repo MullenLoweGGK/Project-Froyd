@@ -181,16 +181,25 @@ function toHumanError(
         ? "This scenario isn’t ready yet. Please try another avatar."
         : "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
     case "session-failed": {
-      const base = en
-        ? "Couldn’t start the conversation. Please try again in a moment."
-        : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
-      // Only hint on explicit missing-key errors — not every 401/credit string.
+      // LiveAvatar platform outage (HTML 502/503) — not a local env misconfig.
+      if (
+        technical &&
+        /upstream|503|502|Service Temporarily Unavailable|Non-JSON response/i.test(
+          technical
+        )
+      ) {
+        return en
+          ? "HeyGen LiveAvatar is temporarily unavailable. Please try again in a few minutes."
+          : "HeyGen LiveAvatar je dočasne nedostupný. Skúste to znova o pár minút.";
+      }
       if (technical && /LIVEAVATAR_API_KEY is not configured/i.test(technical)) {
         return en
-          ? `${base} Server is missing LIVEAVATAR_API_KEY on this Vercel project (Production).`
-          : `${base} Na tomto Vercel projekte chýba LIVEAVATAR_API_KEY (Production).`;
+          ? "Couldn’t start the conversation — server is missing LIVEAVATAR_API_KEY on this Vercel project (Production)."
+          : "Nepodarilo sa spustiť rozhovor — na tomto Vercel projekte chýba LIVEAVATAR_API_KEY (Production).";
       }
-      return base;
+      return en
+        ? "Couldn’t start the conversation. Please try again in a moment."
+        : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
     }
     case "credit-limit":
       return froydContent.creditLimit.message;
@@ -578,8 +587,12 @@ export function useLiveAvatarSession() {
             setStatus("error");
             return;
           }
+          const code = (body as { code?: string }).code;
+          const detail = (body as { detail?: string }).detail;
           throw new Error(
-            (body as { error?: string }).error ?? `Backend returned HTTP ${res.status}`
+            [code, (body as { error?: string }).error, detail]
+              .filter(Boolean)
+              .join(": ") || `Backend returned HTTP ${res.status}`
           );
         }
 
