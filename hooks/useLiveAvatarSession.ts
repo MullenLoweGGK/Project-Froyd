@@ -25,6 +25,42 @@ async function requestMicrophoneAccess(): Promise<void> {
   stream.getTracks().forEach((t) => t.stop());
 }
 
+/** Prefer Permissions API — a second getUserMedia probe often fails spuriously on iOS. */
+async function readMicrophonePermissionState(): Promise<
+  PermissionState | "unknown"
+> {
+  try {
+    const permissions = navigator.permissions;
+    if (!permissions?.query) return "unknown";
+    const status = await permissions.query({
+      name: "microphone" as PermissionName,
+    });
+    return status.state;
+  } catch {
+    return "unknown";
+  }
+}
+
+async function ensureMicrophoneAccess(): Promise<boolean> {
+  const state = await readMicrophonePermissionState();
+  if (state === "granted") return true;
+  if (state === "denied") return false;
+
+  try {
+    await requestMicrophoneAccess();
+    return true;
+  } catch (err) {
+    console.error("[LiveAvatar] mic ensure failed:", micErrorDetail(err));
+    // If Permissions API was unavailable, a later SDK unmute may still work —
+    // only hard-fail on explicit denial.
+    const name = err && typeof err === "object" ? (err as { name?: string }).name : "";
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      return false;
+    }
+    return false;
+  }
+}
+
 function micErrorDetail(err: unknown): string {
   if (!err || typeof err !== "object") return String(err);
   const e = err as { name?: string; message?: string };
@@ -130,8 +166,8 @@ function toHumanError(
       return froydContent.creditLimit.message;
     case "mic-denied":
       return en
-        ? "We need microphone access so you can talk to the avatar. Allow the mic in your browser / iPhone settings (Settings → Safari → Microphone) and try again."
-        : "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v nastaveniach prehliadača / iPhonu (Nastavenia → Safari → Mikrofón) a skúste znova.";
+        ? "Please allow the microphone, then tap “Start conversation now” again. On iPhone: Settings → Safari → Microphone."
+        : "Povoľte mikrofón a znova ťuknite na „Začať rozhovor hneď“. Na iPhone: Nastavenia → Safari → Mikrofón.";
     case "connection":
       return en
         ? "Connection failed. Check your internet and try again."
@@ -455,15 +491,10 @@ export function useLiveAvatarSession() {
 
       // iOS Safari: request mic on the tap that starts the session (user gesture).
       // Never block session create if this fails — user can grant on "Začať rozhovor hneď".
-      try {
-        await requestMicrophoneAccess();
-        micPermissionGrantedRef.current = true;
-        setMicPermissionGranted(true);
-      } catch (err) {
-        micPermissionGrantedRef.current = false;
-        setMicPermissionGranted(false);
-        console.error("[LiveAvatar] mic permission on start:", micErrorDetail(err));
-      }
+      // Never surface a red mic error here (it is a common false positive after Settings grant).
+      const grantedOnStart = await ensureMicrophoneAccess();
+      micPermissionGrantedRef.current = grantedOnStart;
+      setMicPermissionGranted(grantedOnStart);
 
       try {
         await preferMediaLoudspeaker(videoRef.current);
@@ -922,18 +953,17 @@ export function useLiveAvatarSession() {
     setError(null);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // If mic was already granted on "Spustiť", do not call getUserMedia again —
-    // a second probe on iOS often fails spuriously and only shows a redundant error.
+    // Re-check Permissions API first. Avoid a second getUserMedia when already granted —
+    // that probe often fails spuriously on iOS and only shows a redundant blocker.
     if (!micPermissionGrantedRef.current) {
-      try {
-        await requestMicrophoneAccess();
-        micPermissionGrantedRef.current = true;
-        setMicPermissionGranted(true);
-      } catch (err) {
-        console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
+      const granted = await ensureMicrophoneAccess();
+      micPermissionGrantedRef.current = granted;
+      setMicPermissionGranted(granted);
+      if (!granted) {
         gate.introStarted = false;
         setPreparingIntro(false);
-        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+        // Soft tip only — stay on awaiting-ready so the user can tap again after allowing.
+        setError(toHumanError("mic-denied", undefined, languageRef.current));
         setStatus("awaiting-ready");
         return false;
       }

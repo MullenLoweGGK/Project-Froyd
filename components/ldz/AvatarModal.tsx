@@ -249,7 +249,7 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        {error && !(awaitingReady && micPermissionGranted) ? (
+        {error && !awaitingReady ? (
           <p className="ldz-modal__error" role="alert">
             {error}
           </p>

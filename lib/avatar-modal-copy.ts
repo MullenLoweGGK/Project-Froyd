@@ -38,7 +38,7 @@ const sk: ModalCopy = {
   readyEmphasis:
     "Hovorte prirodzene, ako na kurze. Počkajte, kým avatar dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás iPhone vyzve.",
+    "Ťuknite na „Povoliť mikrofón a začať“. Ak vás prehliadač vyzve, povoľte mikrofón a ťuknite znova.",
   preparingTitle: "Pripravujeme zvuk…",
   preparingCopy: "O chvíľu môžete začať hovoriť.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
