@@ -27,7 +27,7 @@ export const froydContent = {
     ],
     courseHeadline: "Ako na to",
     courseParagraphs: [
-      "Vyberte si avatara, vypočujte predstavenie a položte niekoľko otázok. Hovorte prirodzene — rovnako ako na kurze. Scenár je vzdelávacia simulácia, nie diagnostika.",
+      "Vyberte si avatara, spustite rozhovor a prihovorte sa ako prví. Avatar sa sám nepredstaví — vediete rozhovor vy. Maximálny čas je 10 minút. Scenár je vzdelávacia simulácia, nie diagnostika.",
     ],
     /** Empty = no public signup CTA on the courses site */
     buttonLabel: "",

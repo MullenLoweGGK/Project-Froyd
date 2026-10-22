@@ -129,6 +129,7 @@ export function AvatarModal({
       questionLimit: session.questionLimit,
       questionLimitMessage: session.questionLimitMessage,
       questionLimitFollowupMessage: session.questionLimitFollowupMessage,
+      maxSessionMs: session.maxSessionMs,
     });
   }
 

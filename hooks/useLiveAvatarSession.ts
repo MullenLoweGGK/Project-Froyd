@@ -38,15 +38,17 @@ export type LiveAvatarConfig = {
   language?: string;
   /**
    * Manual opening line via session.repeat() after CONNECTED + STREAM_READY.
-   * Disable / clear HeyGen Context OpeningText so the avatar does not speak twice.
+   * Omit on courses — participant speaks first.
    */
   openingText?: string;
-  /** Hard stop after this many user turns (default 4). */
+  /** Hard stop after this many user turns. Omit / undefined = no limit. */
   questionLimit?: number;
   /** Forced line spoken via session.repeat() when the limit is hit. */
   questionLimitMessage?: string;
   /** Spoken on every further user turn after the limit (5th+). */
   questionLimitFollowupMessage?: string;
+  /** Talk clock after first mic unmute (ms). Default 120s. */
+  maxSessionMs?: number;
 };
 
 export type HumanErrorCode =
@@ -102,7 +104,7 @@ type IntroGate = {
   openingText?: string;
 };
 
-const DEFAULT_QUESTION_LIMIT = 4;
+const DEFAULT_MAX_SESSION_MS = 120_000;
 
 function toHumanError(
   code: HumanErrorCode,
@@ -167,7 +169,6 @@ function debugLog(event: string, detail?: unknown) {
  * Only one session should exist at a time — callers must stop before starting another.
  * The HeyGen SDK is dynamically imported only when the user starts a session.
  */
-const MAX_SESSION_MS = 120_000;
 /** Settle after audio unlock / re-attach, before session.repeat(openingText). */
 const INTRO_BUFFER_MS = 1200;
 
@@ -282,6 +283,8 @@ export function useLiveAvatarSession() {
   const micPermissionGrantedRef = useRef(false);
   /** Session UI language for human-readable errors (sk | en). */
   const languageRef = useRef("sk");
+  /** Per-session talk clock (armed on first unmute). */
+  const maxSessionMsRef = useRef(DEFAULT_MAX_SESSION_MS);
 
   const [status, setStatus] = useState<AppStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -393,18 +396,20 @@ export function useLiveAvatarSession() {
     if (maxDurationArmedRef.current) return;
     maxDurationArmedRef.current = true;
     clearMaxDurationTimer();
-    debugLog("MAX_DURATION_ARMED", { ms: MAX_SESSION_MS });
+    const maxMs = maxSessionMsRef.current;
+    const maxMinutes = Math.max(1, Math.round(maxMs / 60_000));
+    debugLog("MAX_DURATION_ARMED", { ms: maxMs });
     maxDurationTimerRef.current = setTimeout(() => {
       maxDurationTimerRef.current = null;
       void (async () => {
         await stopSession();
         setError(
           languageRef.current === "en"
-            ? "You’ve reached the maximum conversation time (120 seconds). You can start a new conversation."
-            : "Dosiahli ste maximálny čas rozhovoru (120 sekúnd). Môžete spustiť nový rozhovor."
+            ? `You’ve reached the maximum conversation time (${maxMinutes} minutes). You can start a new conversation.`
+            : `Dosiahli ste maximálny čas rozhovoru (${maxMinutes} minút). Môžete spustiť nový rozhovor.`
         );
       })();
-    }, MAX_SESSION_MS);
+    }, maxMs);
   }, [clearMaxDurationTimer, stopSession]);
 
   const toggleMic = useCallback(async () => {
@@ -431,6 +436,10 @@ export function useLiveAvatarSession() {
   const startSession = useCallback(
     async (config: LiveAvatarConfig) => {
       languageRef.current = config.language === "en" ? "en" : "sk";
+      maxSessionMsRef.current =
+        typeof config.maxSessionMs === "number" && config.maxSessionMs > 0
+          ? config.maxSessionMs
+          : DEFAULT_MAX_SESSION_MS;
 
       if (!config.avatarId) {
         setError(toHumanError("missing-config", undefined, languageRef.current));
@@ -546,7 +555,11 @@ export function useLiveAvatarSession() {
           introInProgress: false,
           conversationActive: false,
           userTurnCount: 0,
-          questionLimit: Math.max(1, config.questionLimit ?? DEFAULT_QUESTION_LIMIT),
+          // Infinity = no hard question limit (courses site).
+          questionLimit:
+            typeof config.questionLimit === "number" && config.questionLimit > 0
+              ? Math.max(1, config.questionLimit)
+              : Number.POSITIVE_INFINITY,
           questionLimitMessage: config.questionLimitMessage?.trim() || undefined,
           questionLimitFollowupMessage:
             config.questionLimitFollowupMessage?.trim() || undefined,
@@ -748,12 +761,19 @@ export function useLiveAvatarSession() {
             limit: gate.questionLimit,
           });
 
-          if (gate.userTurnCount === gate.questionLimit && gate.questionLimitMessage) {
+          if (
+            Number.isFinite(gate.questionLimit) &&
+            gate.userTurnCount === gate.questionLimit &&
+            gate.questionLimitMessage
+          ) {
             void speakForcedLimitLine(gate.questionLimitMessage);
             return;
           }
 
-          if (gate.userTurnCount > gate.questionLimit) {
+          if (
+            Number.isFinite(gate.questionLimit) &&
+            gate.userTurnCount > gate.questionLimit
+          ) {
             const followup =
               gate.questionLimitFollowupMessage || gate.questionLimitMessage;
             if (followup) {

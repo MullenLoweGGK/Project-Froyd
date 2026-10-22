@@ -18,9 +18,12 @@ export type ResolvedScenarioSession = {
   contextId?: string;
   voiceId?: string;
   openingText?: string;
+  /** Omit / undefined = no hard question limit */
   questionLimit?: number;
   questionLimitMessage?: string;
   questionLimitFollowupMessage?: string;
+  /** Talk clock after first mic unmute (ms). */
+  maxSessionMs?: number;
 };
 
 export type AvatarScenario = {
@@ -31,6 +34,8 @@ export type AvatarScenario = {
   nameInstrumental: string;
   title: string;
   description: string;
+  /** Long first-person profile shown on the courses listing */
+  profile: string;
   quote: string;
   ctaLabel: string;
   /** HeyGen LiveAvatar UUID — empty string means not configured yet */
@@ -48,25 +53,30 @@ export type AvatarScenario = {
   available: boolean;
   /**
    * Spoken intro after stream is ready (session.repeat).
-   * HeyGen Context Opening Text must be empty/disabled so this does not double-fire.
+   * Empty/undefined on the courses site — participant speaks first.
    */
   openingText?: string;
-  /** Hard client-side stop after N user turns. */
+  /** Hard client-side stop after N user turns. Omit = unlimited. */
   questionLimit?: number;
   /** Forced closing line when questionLimit is hit (session.repeat). */
   questionLimitMessage?: string;
   /** Spoken on every further user turn after the limit (5th+). */
   questionLimitFollowupMessage?: string;
+  /** Talk clock after first mic unmute. Default applied in session hook if omitted. */
+  maxSessionMs?: number;
   /** English session override (context + scripted lines). */
   english?: ScenarioEnglishPack;
 };
 
+/** Courses site: 10 minutes after first mic unmute. */
+export const COURSE_MAX_SESSION_MS = 600_000;
+
 /**
- * Scenario configuration for the FROYD microsite.
+ * Scenario configuration for the PPDZ courses microsite (branch: courses).
  *
  * Env naming (avatar / context / voice per person):
  * - Eva:   NEXT_PUBLIC_EVA_*   (falls back to legacy NEXT_PUBLIC_DEFAULT_*)
- * - Peter: NEXT_PUBLIC_PETER_*  (+ optional NEXT_PUBLIC_PETER_CONTEXT_ID_EN / VOICE_ID_EN)
+ * - Peter: NEXT_PUBLIC_PETER_*
  * - Tomáš: NEXT_PUBLIC_TOMAS_*
  *
  * IMPORTANT: Next.js only inlines NEXT_PUBLIC_* when accessed via a static
@@ -80,9 +90,6 @@ function pickEnv(...values: Array<string | undefined>): string {
   }
   return "";
 }
-
-/** LiveAvatar EN context for Peter — override via env without a redeploy of the default. */
-const PETER_EN_CONTEXT_FALLBACK = "f107a300-f8bb-48c9-b6a5-47281469bcc5";
 
 const evaAvatarId = pickEnv(
   process.env.NEXT_PUBLIC_EVA_AVATAR_ID,
@@ -100,53 +107,24 @@ const evaVoiceId = pickEnv(
 const peterAvatarId = pickEnv(process.env.NEXT_PUBLIC_PETER_AVATAR_ID);
 const peterContextId = pickEnv(process.env.NEXT_PUBLIC_PETER_CONTEXT_ID);
 const peterVoiceId = pickEnv(process.env.NEXT_PUBLIC_PETER_VOICE_ID);
-const peterContextIdEn = pickEnv(
-  process.env.NEXT_PUBLIC_PETER_CONTEXT_ID_EN,
-  PETER_EN_CONTEXT_FALLBACK
-);
-const peterVoiceIdEn = pickEnv(process.env.NEXT_PUBLIC_PETER_VOICE_ID_EN);
 
 const tomasAvatarId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_AVATAR_ID);
 const tomasContextId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_CONTEXT_ID);
 const tomasVoiceId = pickEnv(process.env.NEXT_PUBLIC_TOMAS_VOICE_ID);
+
 export const AVATAR_SCENARIOS: AvatarScenario[] = [
-  {
-    id: "eva",
-    slug: "eva",
-    name: "Eva",
-    nameInstrumental: "Evou",
-    title: "Eva",
-    description:
-      "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
-    quote: "Ľudia hovoria, že vyzerám nejaká unavená.",
-    ctaLabel: "Porozprávať sa s Evou",
-    avatarId: evaAvatarId,
-    contextId: evaContextId,
-    voiceId: evaVoiceId || undefined,
-    image: "/ldz/avatars/eva.jpg",
-    nameImage: "/ldz/avatars/name-eva.png",
-    aspect: "9:16",
-    available: Boolean(evaAvatarId),
-    label: "AI simulácia",
-    openingText:
-      "Ahoj, volám sa Eva, mám 56 rokov a 31 rokov pracujem v zdravotníctve, z toho posledných sedem rokov ako vrchná sestra. Mám manžela a dve dospelé deti, ktoré už nežijú doma. Posledný rok sa starám o chorú mamu. Rada cestujem a chodím na túry do prírody. V poslednom čase sa k tomu však na nič nemám energiu.",
-    questionLimit: 4,
-    questionLimitMessage:
-      "Toto je už štvrtá otázka. Na ďalšie otázky ti rada odpoviem na kurze Prvá pomoc pre dušu.",
-    questionLimitFollowupMessage:
-      "Na ďalšie otázky ti rada odpoviem na kurze prvej pomoci pre dušu.",
-  },
   {
     id: "peter",
     slug: "peter",
-    name: "Peter",
+    name: "Peter Horváth",
     nameInstrumental: "Petrom",
-    title: "Peter",
+    title: "Peter Horváth",
     description:
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
-    quote: "O niektorých veciach sa mne osobne hovorí len veľmi ťažko.",
+    profile:
+      "Som Peter Horváth, mám 45 rokov a pracujem ako účtovník v stredne veľkej firme. Posledných niekoľko mesiacov mám pocit, akoby zo mňa niečo odišlo. Nejde ani tak o smútok. Skôr o to, že ma už skoro nič neteší, nič ma veľmi nezaujíma a všetko ma stojí veľa energie. Fungujem, chodím do práce, robím, čo treba, ale mám pocit, akoby som život len odžil. O tom, ako sa cítim, veľa nerozprávam. Mám pocit, že by som tým iba zaťažoval ostatných.",
+    quote: "",
     ctaLabel: "Porozprávať sa s Petrom",
-    // Placeholder — do not invent production IDs
     avatarId: peterAvatarId,
     contextId: peterContextId,
     voiceId: peterVoiceId || undefined,
@@ -155,36 +133,19 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(peterAvatarId),
     label: "AI simulácia",
-    openingText:
-      "Ahoj, volám sa Peter, mám 45 rokov a poslednú dobu rozmýšľam nad zmenou práce. Prestala mi dávať zmysel, ale neviem si predstaviť nájsť si niečo lepšie. Situácia je zlá. Zvykol som športovať, ale teraz radšej iba pozerám telku.",
-    questionLimit: 4,
-    questionLimitMessage:
-      "Toto je už štvrtá otázka. Na ďalšie otázky ti rád odpoviem na kurze Prvá pomoc pre dušu.",
-    questionLimitFollowupMessage:
-      "Na ďalšie otázky ti rád odpoviem na kurze prvej pomoci pre dušu.",
-    english: peterContextIdEn
-      ? {
-          contextId: peterContextIdEn,
-          voiceId: peterVoiceIdEn || undefined,
-          ctaLabel: "Talk in English",
-          openingText:
-            "Hi, my name is Peter, I'm 45, and lately I've been thinking about changing jobs. It stopped making sense to me, but I can't imagine finding something better. The situation is bad. I used to work out, but now I'd rather just watch TV.",
-          questionLimitMessage:
-            "That's already the fourth question. I'm happy to answer more on the First Aid for the Soul course.",
-          questionLimitFollowupMessage:
-            "I'm happy to answer more questions on the First Aid for the Soul course.",
-        }
-      : undefined,
+    maxSessionMs: COURSE_MAX_SESSION_MS,
   },
   {
     id: "tomas",
     slug: "tomas",
-    name: "Tomáš",
+    name: "Tomáš Novák",
     nameInstrumental: "Tomášom",
-    title: "Tomáš",
+    title: "Tomáš Novák",
     description:
       "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
-    quote: "Najťažšie je vysvetliť ostatným, čo sa deje vo vašej hlave.",
+    profile:
+      "Som Tomáš Novák, mám 22 rokov a študujem informatiku na vysokej škole. Popri škole pracujem na čiastočný úväzok ako programátor. Väčšina ľudí by povedala, že som tichý alebo introvert, ale pravda je, že medzi ľuďmi bývam veľmi nervózny.\n\nNeustále premýšľam nad tým, čo si o mne ostatní myslia, či som nepovedal niečo trápne alebo či nepôsobím divne. Navonok sa snažím tváriť pokojne, ale vo vnútri som často napätý. O svojich problémoch veľa nerozprávam, skôr ich skrývam. Často si myslím, že ostatní to zvládajú prirodzene a ja som v tomto akosi pokazený.",
+    quote: "",
     ctaLabel: "Porozprávať sa s Tomášom",
     avatarId: tomasAvatarId,
     contextId: tomasContextId,
@@ -194,49 +155,35 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(tomasAvatarId),
     label: "AI simulácia",
-    openingText:
-      "Ahoj, volám sa Tomáš, mám 22 rokov a študujem informatiku. Popri tom už pracujem vo firme. Mám rád svoju prácu, lebo si môžem robiť svoje a nemusím sa baviť s druhými. Čoskoro ma čaká prezentovanie mojej práce pred kolegami. Nemôžem kvôli tomu spať.",
-    questionLimit: 4,
-    questionLimitMessage:
-      "Toto je už štvrtá otázka. Na ďalšie otázky ti rád odpoviem na kurze Prvá pomoc pre dušu.",
-    questionLimitFollowupMessage:
-      "Na ďalšie otázky ti rád odpoviem na kurze prvej pomoci pre dušu.",
+    maxSessionMs: COURSE_MAX_SESSION_MS,
   },
   {
-    id: "scenario-4",
-    slug: "scenario-4",
-    name: "Scenár 4",
-    nameInstrumental: "Scenárom 4",
-    title: "Scenár 4",
-    description: "Pripravené miesto pre ďalší avatarový scenár.",
+    id: "eva",
+    slug: "eva",
+    name: "Eva Kováčová",
+    nameInstrumental: "Evou",
+    title: "Eva Kováčová",
+    description:
+      "AI simulácia vzdelávacieho rozhovoru. Nie je diagnostický ani medicínsky nástroj.",
+    profile:
+      "Som Eva Kováčová, mám 56 rokov a posledný rok sa cítim dlhodobo vyčerpaná prácou aj všetkým okolo nej. Pracujem ako vedúca sestra na internej klinike v krajskom meste. Kedysi som bola človek, ktorý zvládol tlak, vedel podržať tím a mal k ľuďom prirodzenú trpezlivosť. Teraz mám pocit, že fungujem už len zo zvyku. Ráno vstávam unavená, v práci som podráždenejšia, častejšie zabúdam drobnosti a po službe nemám energiu ani chuť na rodinu, kamarátky či veci, ktoré ma kedysi tešili. O svojom stave hovorím opatrne, s hanbou a sebakritikou. Nepôsobím teatrálne, skôr ako žena, ktorá bola dlho silná a už jej dochádzajú sily.",
     quote: "",
-    ctaLabel: "Čoskoro",
-    avatarId: "",
-    contextId: "",
+    ctaLabel: "Porozprávať sa s Evou",
+    avatarId: evaAvatarId,
+    contextId: evaContextId,
+    voiceId: evaVoiceId || undefined,
+    image: "/ldz/avatars/eva.jpg",
+    nameImage: "/ldz/avatars/name-eva.png",
     aspect: "9:16",
-    available: false,
+    available: Boolean(evaAvatarId),
     label: "AI simulácia",
-  },
-  {
-    id: "scenario-5",
-    slug: "scenario-5",
-    name: "Scenár 5",
-    nameInstrumental: "Scenárom 5",
-    title: "Scenár 5",
-    description: "Pripravené miesto pre ďalší avatarový scenár.",
-    quote: "",
-    ctaLabel: "Čoskoro",
-    avatarId: "",
-    contextId: "",
-    aspect: "9:16",
-    available: false,
-    label: "AI simulácia",
+    maxSessionMs: COURSE_MAX_SESSION_MS,
   },
 ];
 
-/** Scenarios shown on the public microsite (DOCX lists three named avatars). */
+/** Scenarios shown on the PPDZ courses microsite. */
 export const PUBLIC_AVATAR_SCENARIOS = AVATAR_SCENARIOS.filter((s) =>
-  ["eva", "peter", "tomas"].includes(s.id)
+  ["peter", "tomas", "eva"].includes(s.id)
 );
 
 export function getScenarioById(id: string): AvatarScenario | undefined {
@@ -267,6 +214,7 @@ export function resolveScenarioSession(
       questionLimit: scenario.questionLimit,
       questionLimitMessage: en.questionLimitMessage,
       questionLimitFollowupMessage: en.questionLimitFollowupMessage,
+      maxSessionMs: scenario.maxSessionMs,
     };
   }
 
@@ -279,5 +227,6 @@ export function resolveScenarioSession(
     questionLimit: scenario.questionLimit,
     questionLimitMessage: scenario.questionLimitMessage,
     questionLimitFollowupMessage: scenario.questionLimitFollowupMessage,
+    maxSessionMs: scenario.maxSessionMs,
   };
 }

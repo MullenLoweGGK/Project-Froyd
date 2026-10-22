@@ -25,22 +25,23 @@ type ModalCopy = {
   status: (status: AppStatus) => string;
 };
 
+/** Courses / PPDZ copy — participant speaks first, 10 min, no scripted intro. */
 const sk: ModalCopy = {
   title: (nameInstrumental) => `Rozhovor s ${nameInstrumental}`,
   close: "Zavrieť",
   closeAria: "Zavrieť rozhovor",
   idleHint:
-    "Najprv si vypočujte predstavenie avatara. Hovorte až keď dohovorí. Maximálny čas rozhovoru je 120 sekúnd.",
+    "Po spustení sa prihovorte avatarovi ako prví. Maximálny čas rozhovoru je 10 minút.",
   readyTitle: "Predtým než začnete",
   readyCopy:
-    "Nastavte si hlasitosť vášho zariadenia aby ste avatara zreteľne počuli. Po pripojení začne avatar svoje predstavenie — vypočujte si ho pozorne až do konca.",
+    "Nastavte si hlasitosť zariadenia, aby ste avatara zreteľne počuli. Po štarte rozhovoru sa prihovorte vy — avatar sa sám nepredstaví.",
   readyEmphasis:
-    "Neskáčte avatarovi do reči. Ak začnete hovoriť skôr než dohovorí, začne vás okamžite počúvať a hneď odpovie na vašu otázku a predošlú odpoveď predčasne ukončí.",
+    "Hovorte prirodzene, ako na kurze. Počkajte, kým avatar dohovorí, a až potom pokračujte.",
   readyMicHint:
     "Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás iPhone vyzve.",
   preparingTitle: "Pripravujeme zvuk…",
-  preparingCopy: "Hneď začne predstavenie. Pripravte sa počúvať.",
-  questionLimitStatus: "Limit otázok — ďalšie na kurze Prvá pomoc pre dušu",
+  preparingCopy: "O chvíľu môžete začať hovoriť.",
+  questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
   micOn: " · Mikrofón zapnutý",
   micOff: " · Mikrofón stlmený",
   start: "Spustiť rozhovor",
@@ -82,18 +83,17 @@ const en: ModalCopy = {
   close: "Close",
   closeAria: "Close conversation",
   idleHint:
-    "First listen to the avatar’s introduction. Speak only after they finish. Maximum conversation time is 120 seconds.",
+    "After starting, speak to the avatar first. Maximum conversation time is 10 minutes.",
   readyTitle: "Before you start",
   readyCopy:
-    "Set your device volume so you can hear the avatar clearly. After connecting, the avatar will introduce themselves — listen carefully until the end.",
+    "Set your device volume so you can hear the avatar clearly. After you start, you speak first — the avatar will not introduce themselves.",
   readyEmphasis:
-    "Don’t interrupt the avatar. If you start speaking before they finish, they will listen immediately, answer your question, and cut off the previous reply.",
+    "Speak naturally. Wait until the avatar finishes before continuing.",
   readyMicHint:
     "Tap “Start conversation now” and allow the microphone when your phone asks.",
   preparingTitle: "Preparing audio…",
-  preparingCopy: "The introduction will start shortly. Get ready to listen.",
-  questionLimitStatus:
-    "Question limit — more on the First Aid for the Soul course",
+  preparingCopy: "You can start speaking shortly.",
+  questionLimitStatus: "Question limit — you can end the conversation",
   micOn: " · Microphone on",
   micOff: " · Microphone muted",
   start: "Start conversation",

@@ -19,6 +19,13 @@ type Props = {
   onLaunch: (scenario: AvatarScenario, language: ConversationLanguage) => void;
 };
 
+function profileParagraphs(profile: string): string[] {
+  return profile
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
 export function AvatarScenarioCard({
   scenario,
   isActiveSession,
@@ -29,7 +36,7 @@ export function AvatarScenarioCard({
   const launchDisabled = !ready || isActiveSession || creditsExhausted;
   const showEnglish = scenarioSupportsEnglish(scenario);
   const showDevHint =
-    process.env.NODE_ENV === "development" && !ready && scenario.quote;
+    process.env.NODE_ENV === "development" && !ready && Boolean(scenario.profile);
 
   const buttonLabel = creditsExhausted
     ? froydContent.creditLimit.ctaDisabledLabel
@@ -38,45 +45,30 @@ export function AvatarScenarioCard({
   const englishLabel =
     scenario.english?.ctaLabel?.trim() || "Talk in English";
 
+  const paragraphs = profileParagraphs(scenario.profile);
+
   return (
     <article className="ldz-scenario-card" id={`scenario-${scenario.slug}`}>
-      <div className="ldz-scenario-card__portrait">
-        {scenario.image ? (
-          <Image
-            src={scenario.image}
-            alt={`Portrét — ${scenario.name}`}
-            fill
-            className="ldz-scenario-card__photo"
-            sizes="(max-width: 960px) 26rem, 33vw"
-          />
-        ) : (
-          <div className="ldz-scenario-card__avatar-placeholder" aria-hidden="true">
-            <span>{scenario.name.charAt(0)}</span>
-          </div>
-        )}
-        <AiSimulationLabel compact />
-      </div>
-
-      <div className="ldz-scenario-card__body">
-        <h3 className="ldz-scenario-card__name">
-          {scenario.nameImage ? (
+      <div className="ldz-scenario-card__media">
+        <div className="ldz-scenario-card__portrait">
+          {scenario.image ? (
             <Image
-              src={scenario.nameImage}
-              alt={scenario.name}
-              width={620}
-              height={294}
-              className="ldz-scenario-card__name-badge"
-              sizes="11.2rem"
+              src={scenario.image}
+              alt={`Portrét — ${scenario.name}`}
+              fill
+              className="ldz-scenario-card__photo"
+              sizes="(max-width: 720px) 100vw, 280px"
             />
           ) : (
-            scenario.name
+            <div
+              className="ldz-scenario-card__avatar-placeholder"
+              aria-hidden="true"
+            >
+              <span>{scenario.name.charAt(0)}</span>
+            </div>
           )}
-        </h3>
-        {scenario.quote ? (
-          <blockquote className="ldz-scenario-card__quote">
-            <p>„{scenario.quote.replace(/^"|"$/g, "")}“</p>
-          </blockquote>
-        ) : null}
+          <AiSimulationLabel compact />
+        </div>
 
         <div className="ldz-scenario-card__actions">
           <button
@@ -114,12 +106,35 @@ export function AvatarScenarioCard({
             </button>
           ) : null}
         </div>
+      </div>
+
+      <div className="ldz-scenario-card__body">
+        <h3 className="ldz-scenario-card__name">
+          {scenario.nameImage ? (
+            <Image
+              src={scenario.nameImage}
+              alt={scenario.name}
+              width={620}
+              height={294}
+              className="ldz-scenario-card__name-badge"
+              sizes="11.2rem"
+            />
+          ) : (
+            scenario.name
+          )}
+        </h3>
+
+        <div className="ldz-scenario-card__profile">
+          {paragraphs.map((p) => (
+            <p key={p.slice(0, 48)}>{p}</p>
+          ))}
+        </div>
 
         <p className="ldz-scenario-card__disclosure">
           {froydContent.aiDisclosure.note}
         </p>
 
-        {!ready && scenario.quote && !creditsExhausted ? (
+        {!ready && scenario.profile && !creditsExhausted ? (
           <p className="ldz-scenario-card__soon" role="status">
             Tento scenár pripravujeme.
           </p>

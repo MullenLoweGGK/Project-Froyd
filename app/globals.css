@@ -285,17 +285,11 @@ body {
 }
 
 .ldz-scenarios__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(1.25rem, 3vw, 2rem);
-}
-
-@media (max-width: 960px) {
-  .ldz-scenarios__grid {
-    grid-template-columns: 1fr;
-    max-width: 26rem;
-    margin-inline: auto;
-  }
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.5rem, 3vw, 2.25rem);
+  max-width: 56rem;
+  margin-inline: auto;
 }
 
 .ldz-scenario-card {
@@ -304,22 +298,32 @@ body {
   box-shadow: var(--ldz-shadow);
   overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   color: var(--ldz-primary);
+}
+
+.ldz-scenario-card__media {
+  flex: 0 0 min(17.5rem, 34%);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1.15rem 1.5rem;
+  background: var(--ldz-soft-blue-tint);
 }
 
 .ldz-scenario-card__portrait {
   width: 100%;
   aspect-ratio: 3 / 4;
-  background: var(--ldz-soft-blue-tint);
+  background: rgba(12, 61, 122, 0.06);
   position: relative;
   overflow: hidden;
+  border-radius: calc(var(--ldz-radius-panel) - 4px);
 }
 
 .ldz-scenario-card__photo {
   object-fit: cover;
   object-position: center top;
-  /* Avoid subpixel gaps against card edges */
   transform: scale(1.02);
   transform-origin: center top;
 }
@@ -348,14 +352,6 @@ body {
   z-index: 1;
 }
 
-.ldz-scenario-card__body {
-  padding: 1.5rem 1.35rem 1.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  flex: 1;
-}
-
 .ldz-scenario-card__actions {
   display: flex;
   flex-direction: column;
@@ -364,6 +360,18 @@ body {
 
 .ldz-scenario-card__actions .ldz-btn {
   width: 100%;
+  min-height: 48px;
+  padding-inline: 1rem;
+  font-size: 0.9375rem;
+}
+
+.ldz-scenario-card__body {
+  padding: 1.65rem 1.75rem 1.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .ldz-scenario-card__name {
@@ -384,25 +392,44 @@ body {
   object-position: left center;
 }
 
-.ldz-scenario-card__quote {
-  margin: 0;
-  padding: 0;
-  border: 0;
+.ldz-scenario-card__profile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
-.ldz-scenario-card__quote p {
+.ldz-scenario-card__profile p {
   margin: 0;
   font-size: 1rem;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--ldz-primary);
-  font-style: italic;
 }
 
 .ldz-scenario-card__disclosure {
   margin: 0;
+  margin-top: auto;
   font-size: 0.8125rem;
   line-height: 1.5;
   color: rgba(12, 61, 122, 0.72);
+}
+
+@media (max-width: 720px) {
+  .ldz-scenario-card {
+    flex-direction: column;
+  }
+
+  .ldz-scenario-card__media {
+    flex: none;
+    width: 100%;
+    max-width: 22rem;
+    margin-inline: auto;
+    padding-bottom: 0.5rem;
+    background: transparent;
+  }
+
+  .ldz-scenario-card__body {
+    padding-top: 0.75rem;
+  }
 }
 
 .ldz-scenario-card__soon {
