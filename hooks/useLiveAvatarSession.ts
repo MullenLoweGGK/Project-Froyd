@@ -938,8 +938,12 @@ export function useLiveAvatarSession() {
   );
 
   /**
-   * After disclaimer countdown / "start now": unlock audio, prime media,
-   * then speak openingText (no warm-up utterance).
+   * After disclaimer / "start now": unlock audio, prime media, then either
+   * speak openingText or (courses) unmute immediately so the user can speak first.
+   *
+   * Important for Safari (Mac + iOS): do not await long delays before the first
+   * voiceChat.unmute() when there is no intro — the user-gesture chain breaks and
+   * the SDK never gets a live mic, so the avatar never hears the participant.
    */
   const confirmReady = useCallback(async (): Promise<boolean> => {
     const gate = introGateRef.current;
@@ -951,10 +955,12 @@ export function useLiveAvatarSession() {
     gate.introStarted = true;
     setPreparingIntro(true);
     setError(null);
-    debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
+    debugLog("USER_READY_CONFIRMED", {
+      sessionId: gate.sessionId,
+      hasOpening: Boolean(gate.openingText),
+    });
 
-    // Re-check Permissions API first. Avoid a second getUserMedia when already granted —
-    // that probe often fails spuriously on iOS and only shows a redundant blocker.
+    // Keep mic ensure under the click. Prefer Permissions API when already granted.
     if (!micPermissionGrantedRef.current) {
       const granted = await ensureMicrophoneAccess();
       micPermissionGrantedRef.current = granted;
@@ -962,7 +968,6 @@ export function useLiveAvatarSession() {
       if (!granted) {
         gate.introStarted = false;
         setPreparingIntro(false);
-        // Soft tip only — stay on awaiting-ready so the user can tap again after allowing.
         setError(toHumanError("mic-denied", undefined, languageRef.current));
         setStatus("awaiting-ready");
         return false;
@@ -981,18 +986,51 @@ export function useLiveAvatarSession() {
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     if (videoRef.current) {
-      await primeAvatarMedia(videoRef.current, () => {
-        try {
-          session.attach(videoRef.current as HTMLVideoElement);
-        } catch {
-          /* ignore */
-        }
-      });
+      videoRef.current.muted = false;
+      videoRef.current.defaultMuted = false;
+      videoRef.current.volume = 1;
+      try {
+        session.attach(videoRef.current);
+      } catch {
+        /* ignore */
+      }
+      try {
+        await videoRef.current.play();
+      } catch {
+        /* ignore */
+      }
       await preferMediaLoudspeaker(videoRef.current);
     }
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
+    // Courses path: no scripted intro — unmute immediately under the user gesture.
+    if (!gate.openingText) {
+      setPreparingIntro(false);
+      gate.conversationActive = true;
+      try {
+        await session.voiceChat.unmute();
+        debugLog("CONVERSATION_LIVE", { sessionId: gate.sessionId });
+      } catch (err) {
+        debugLog("CONVERSATION_UNMUTE_FAILED", err);
+        // One quick retry — Safari sometimes needs a second unmute after attach/play.
+        try {
+          await session.voiceChat.unmute();
+        } catch (retryErr) {
+          debugLog("CONVERSATION_UNMUTE_RETRY_FAILED", retryErr);
+          gate.introStarted = false;
+          gate.conversationActive = false;
+          setError(toHumanError("mic-denied", micErrorDetail(retryErr), languageRef.current));
+          setStatus("awaiting-ready");
+          return false;
+        }
+      }
+      await preferMediaLoudspeaker(videoRef.current);
+      setStatus("ready");
+      return true;
+    }
+
+    // Campaign path: keep mic muted through the scripted intro.
     try {
       await session.voiceChat.mute();
     } catch (err) {
@@ -1013,53 +1051,36 @@ export function useLiveAvatarSession() {
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     if (videoRef.current) {
-      videoRef.current.muted = false;
-      videoRef.current.defaultMuted = false;
-      videoRef.current.volume = 1;
-      try {
-        session.attach(videoRef.current);
-      } catch {
-        /* ignore */
-      }
-      try {
-        await videoRef.current.play();
-      } catch {
-        /* ignore */
-      }
+      await primeAvatarMedia(videoRef.current, () => {
+        try {
+          session.attach(videoRef.current as HTMLVideoElement);
+        } catch {
+          /* ignore */
+        }
+      });
+      await preferMediaLoudspeaker(videoRef.current);
     }
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    if (gate.openingText) {
-      gate.introInProgress = true;
-      setPreparingIntro(false);
-      debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
-      setStatus("avatar-speaking");
-
-      try {
-        session.repeat(gate.openingText);
-      } catch (err) {
-        gate.introInProgress = false;
-        debugLog("INTRO_REPEAT_FAILED", err);
-        gate.conversationActive = true;
-        try {
-          await session.voiceChat.unmute();
-        } catch {
-          /* ignore */
-        }
-        setStatus("ready");
-      }
-      return true;
-    }
-
+    gate.introInProgress = true;
     setPreparingIntro(false);
-    gate.conversationActive = true;
+    debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
+    setStatus("avatar-speaking");
+
     try {
-      await session.voiceChat.unmute();
-    } catch {
-      /* ignore */
+      session.repeat(gate.openingText);
+    } catch (err) {
+      gate.introInProgress = false;
+      debugLog("INTRO_REPEAT_FAILED", err);
+      gate.conversationActive = true;
+      try {
+        await session.voiceChat.unmute();
+      } catch {
+        /* ignore */
+      }
+      setStatus("ready");
     }
-    setStatus("ready");
     return true;
   }, []);
 
