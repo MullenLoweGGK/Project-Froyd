@@ -38,11 +38,9 @@ export function AvatarModal({
     videoRef,
     status,
     error,
-    micMuted,
     isIdle,
     startSession,
     stopSession,
-    toggleMic,
     confirmReady,
     preparingIntro,
     questionLimitReached,
@@ -105,7 +103,6 @@ export function AvatarModal({
 
   if (!open) return null;
 
-  const canControlMic = status === "ready" || status === "user-speaking";
   // Live stream only after disclaimer — during awaiting-ready show static photo.
   const streamVisible =
     status === "ready" ||
@@ -244,12 +241,6 @@ export function AvatarModal({
             {questionLimitReached
               ? copy.questionLimitStatus
               : copy.status(status)}
-            {canControlMic && !questionLimitReached && !micMuted
-              ? copy.micOn
-              : null}
-            {canControlMic && !questionLimitReached && micMuted
-              ? copy.micOff
-              : null}
           </p>
         ) : null}
 
@@ -291,24 +282,6 @@ export function AvatarModal({
                 onClick={() => void handleClose()}
               >
                 {copy.end}
-              </button>
-            </>
-          ) : canControlMic ? (
-            <>
-              <button
-                type="button"
-                className="ldz-btn ldz-btn--primary"
-                onClick={() => void toggleMic()}
-                aria-pressed={micMuted}
-              >
-                {micMuted ? copy.unmute : copy.mute}
-              </button>
-              <button
-                type="button"
-                className="ldz-btn ldz-btn--danger"
-                onClick={() => void handleClose()}
-              >
-                {copy.endSession}
               </button>
             </>
           ) : (
