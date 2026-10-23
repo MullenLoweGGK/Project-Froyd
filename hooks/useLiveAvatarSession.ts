@@ -1114,8 +1114,9 @@ export function useLiveAvatarSession() {
           }
         });
 
-        // Fail fast if LiveKit/HeyGen never resolves — avoid a stuck loading UI.
-        const START_TIMEOUT_MS = 3_000;
+        // Connection safety net only (LiveKit/HeyGen handshake). Not the short
+        // multimodal race mitigations elsewhere — those stay in the 2–3s range.
+        const START_TIMEOUT_MS = 15_000;
         await Promise.race([
           session.start(),
           new Promise<never>((_, reject) => {
@@ -1123,8 +1124,8 @@ export function useLiveAvatarSession() {
               reject(
                 new Error(
                   languageRef.current === "en"
-                    ? "Timed out connecting to the avatar (3s)."
-                    : "Vypršal čas pripojenia k avatarovi (3 s)."
+                    ? "Timed out connecting to the avatar (15s)."
+                    : "Vypršal čas pripojenia k avatarovi (15 s)."
                 )
               );
             }, START_TIMEOUT_MS);
