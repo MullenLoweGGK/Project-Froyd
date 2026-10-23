@@ -70,6 +70,7 @@ type SessionLike = {
   repeat: (message: string) => string;
   interrupt: () => void;
   stopListening: () => string;
+  startListening: () => string;
   voiceChat: {
     isMuted: boolean;
     mute: () => Promise<void>;
@@ -422,6 +423,11 @@ export function useLiveAvatarSession() {
     try {
       if (session.voiceChat.isMuted) {
         await session.voiceChat.unmute();
+        try {
+          session.startListening();
+        } catch {
+          /* ignore */
+        }
       } else {
         await session.voiceChat.mute();
       }
@@ -596,12 +602,20 @@ export function useLiveAvatarSession() {
           }
 
           gate.readyPromptShown = true;
-          debugLog("READY_GATE", { sessionId: gate.sessionId });
+          debugLog("READY_GATE", {
+            sessionId: gate.sessionId,
+            hasOpening: Boolean(gate.openingText),
+          });
 
-          try {
-            await sessionLike.voiceChat.mute();
-          } catch (err) {
-            debugLog("READY_GATE_MUTE_FAILED", err);
+          // With scripted intro (main): mute until after repeat() finishes.
+          // With empty intro (courses): keep the LiveKit mic track — mute here
+          // would stopOnMute and leave no working unmute path after Začať.
+          if (gate.openingText) {
+            try {
+              await sessionLike.voiceChat.mute();
+            } catch (err) {
+              debugLog("READY_GATE_MUTE_FAILED", err);
+            }
           }
 
           if (videoRef.current) {
@@ -672,6 +686,11 @@ export function useLiveAvatarSession() {
             await sessionLike.voiceChat.unmute();
           } catch (err) {
             debugLog("CONVERSATION_UNMUTE_FAILED", err);
+          }
+          try {
+            sessionLike.startListening();
+          } catch (err) {
+            debugLog("START_LISTENING_FAILED", err);
           }
           // Mic unmute can flip Android into call/earpiece mode — re-assert media speaker.
           await preferMediaLoudspeaker(videoRef.current);
@@ -936,6 +955,49 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
+    // Empty intro (courses): same end-state as main after AVATAR_SPEAK_ENDED —
+    // unmute + startListening under this click. Skip mute/intro buffer (those
+    // exist only to stage the scripted opening line).
+    if (!gate.openingText) {
+      gate.conversationActive = true;
+      try {
+        await session.voiceChat.unmute();
+      } catch (err) {
+        debugLog("NO_INTRO_UNMUTE_FAILED", err);
+      }
+      try {
+        session.startListening();
+      } catch (err) {
+        debugLog("NO_INTRO_START_LISTENING_FAILED", err);
+      }
+
+      await preferMediaLoudspeaker(videoRef.current);
+      await unlockBrowserAudio();
+      if (videoRef.current) {
+        await primeAvatarMedia(videoRef.current, () => {
+          try {
+            session.attach(videoRef.current as HTMLVideoElement);
+          } catch {
+            /* ignore */
+          }
+        });
+        videoRef.current.muted = false;
+        videoRef.current.defaultMuted = false;
+        videoRef.current.volume = 1;
+        try {
+          await videoRef.current.play();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      setPreparingIntro(false);
+      setMicMuted(session.voiceChat.isMuted);
+      setStatus("ready");
+      return true;
+    }
+
+    // Scripted intro (main campaign path)
     await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
 
@@ -991,36 +1053,29 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    if (gate.openingText) {
-      gate.introInProgress = true;
-      setPreparingIntro(false);
-      debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
-      setStatus("avatar-speaking");
-
-      try {
-        session.repeat(gate.openingText);
-      } catch (err) {
-        gate.introInProgress = false;
-        debugLog("INTRO_REPEAT_FAILED", err);
-        gate.conversationActive = true;
-        try {
-          await session.voiceChat.unmute();
-        } catch {
-          /* ignore */
-        }
-        setStatus("ready");
-      }
-      return true;
-    }
-
+    gate.introInProgress = true;
     setPreparingIntro(false);
-    gate.conversationActive = true;
+    debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
+    setStatus("avatar-speaking");
+
     try {
-      await session.voiceChat.unmute();
-    } catch {
-      /* ignore */
+      session.repeat(gate.openingText);
+    } catch (err) {
+      gate.introInProgress = false;
+      debugLog("INTRO_REPEAT_FAILED", err);
+      gate.conversationActive = true;
+      try {
+        await session.voiceChat.unmute();
+      } catch {
+        /* ignore */
+      }
+      try {
+        session.startListening();
+      } catch {
+        /* ignore */
+      }
+      setStatus("ready");
     }
-    setStatus("ready");
     return true;
   }, []);
 
