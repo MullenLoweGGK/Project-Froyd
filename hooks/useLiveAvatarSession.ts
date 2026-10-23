@@ -447,6 +447,8 @@ export function useLiveAvatarSession() {
   const languageRef = useRef("sk");
   /** Per-session talk clock (armed on first unmute). */
   const maxSessionMsRef = useRef(DEFAULT_MAX_SESSION_MS);
+  /** Clears LiveAvatar keep-alive interval for the active session. */
+  const keepAliveClearRef = useRef<(() => void) | null>(null);
 
   const [status, setStatus] = useState<AppStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -518,6 +520,8 @@ export function useLiveAvatarSession() {
   );
 
   const stopSession = useCallback(async () => {
+    keepAliveClearRef.current?.();
+    keepAliveClearRef.current = null;
     clearMaxDurationTimer();
     maxDurationArmedRef.current = false;
     resetIntroGate();
@@ -706,6 +710,15 @@ export function useLiveAvatarSession() {
 
       setStatus("connecting");
 
+      // DOM timer id (number). Node's @types can widen setInterval to Timeout.
+      let keepAliveId: number | null = null;
+      const clearKeepAlive = () => {
+        if (keepAliveId != null) {
+          window.clearInterval(keepAliveId);
+          keepAliveId = null;
+        }
+      };
+
       try {
         const sdk = await import("@heygen/liveavatar-web-sdk");
         const {
@@ -719,13 +732,21 @@ export function useLiveAvatarSession() {
 
         // Courses: keep mic live from session.start (no second getUserMedia).
         // Campaign: start muted until after the scripted intro.
+        // Stay on SDK 0.0.13 — 0.0.19+ waitForRequiredParticipants hung on “Pripravujeme avatara…”.
         const isCoursesSession = !config.openingText?.trim();
         const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: isCoursesSession ? {} : { defaultMuted: true },
-          autoKeepAlive: true,
+          voiceChat: isCoursesSession
+            ? { defaultMuted: false }
+            : { defaultMuted: true },
         });
         const sessionLike = session as unknown as SessionLike;
         sessionRef.current = sessionLike;
+
+        // Manual keep-alive (autoKeepAlive only exists in newer SDK versions).
+        keepAliveId = window.setInterval(() => {
+          void sessionLike.keepAlive?.().catch(() => null);
+        }, 60_000) as unknown as number;
+        keepAliveClearRef.current = clearKeepAlive;
 
         // Per-session intro gate — identity is this object + sessionId.
         const gate: IntroGate = {
@@ -853,6 +874,7 @@ export function useLiveAvatarSession() {
           }
           if (state === SessionState.DISCONNECTING) setStatus("stopping");
           if (state === SessionState.DISCONNECTED) {
+            clearKeepAlive();
             clearMaxDurationTimer();
             resetIntroGate();
             setStatus("disconnected");
@@ -875,6 +897,7 @@ export function useLiveAvatarSession() {
 
         session.on(SessionEvent.SESSION_DISCONNECTED, (reason) => {
           debugLog("SESSION_DISCONNECTED", { sessionId, reason });
+          clearKeepAlive();
           clearMaxDurationTimer();
           resetIntroGate();
           if (reason !== SessionDisconnectReason.CLIENT_INITIATED) {
@@ -1082,6 +1105,7 @@ export function useLiveAvatarSession() {
         });
 
         session.on(AgentEventsEnum.SESSION_STOPPED, () => {
+          clearKeepAlive();
           clearMaxDurationTimer();
           resetIntroGate();
           setStatus("stopped");
@@ -1090,12 +1114,29 @@ export function useLiveAvatarSession() {
           }
         });
 
-        await session.start();
+        // Don't hang forever on LiveKit / HeyGen — surface a clear error.
+        const START_TIMEOUT_MS = 45_000;
+        await Promise.race([
+          session.start(),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => {
+              reject(
+                new Error(
+                  languageRef.current === "en"
+                    ? "Timed out connecting to the avatar (45s)."
+                    : "Vypršal čas pripojenia k avatarovi (45 s)."
+                )
+              );
+            }, START_TIMEOUT_MS);
+          }),
+        ]);
         // If configureSession failed to open the mic, retry once while Spustiť's
         // warmup stream is still alive (helps Safari publish a LiveKit track).
         if (sessionLike.voiceChat.state !== "ACTIVE") {
           try {
-            await sessionLike.voiceChat.start({ defaultMuted: isCoursesSession ? false : true });
+            await sessionLike.voiceChat.start({
+              defaultMuted: isCoursesSession ? false : true,
+            });
           } catch (err) {
             debugLog("VOICE_CHAT_RETRY_AFTER_START_FAILED", err);
           }
@@ -1109,10 +1150,16 @@ export function useLiveAvatarSession() {
           muted: sessionLike.voiceChat.isMuted,
         });
       } catch (err) {
+        clearKeepAlive();
         micWarmup?.getTracks().forEach((t) => t.stop());
         micWarmup = null;
         clearMaxDurationTimer();
         resetIntroGate();
+        try {
+          sessionRef.current?.stop?.();
+        } catch {
+          /* ignore */
+        }
         const msg = String(err);
         // HeyGen often returns a generic "Errors validating session token";
         // surface a clearer public message when the cause is identifiable.
@@ -1120,7 +1167,7 @@ export function useLiveAvatarSession() {
           ? "mic-denied"
           : /Voice not found|voice_id/i.test(msg)
             ? "missing-config"
-            : /timeout|network|fetch|connect/i.test(msg)
+            : /timeout|Timed out|network|fetch|connect|Vypršal/i.test(msg)
               ? "connection"
               : "stream";
         const human =
