@@ -127,8 +127,10 @@ type SessionLike = {
 
 /**
  * Make voice chat ACTIVE + unmuted and tell the agent to listen.
- * Soft path never calls stop() (that breaks Safari). forceRestart only under a click.
- * ACTIVE is treated as success even if isMuted flakes — startListening still helps.
+ *
+ * IMPORTANT (Safari): do NOT open a parallel getUserMedia() before voiceChat.start().
+ * A second live mic stream often makes LiveKit’s createLocalAudioTrack fail or stay
+ * muted — which looked like “Zapnúť mikrofón does nothing”.
  */
 async function ensureVoiceChatListening(
   session: SessionLike,
@@ -143,78 +145,66 @@ async function ensureVoiceChatListening(
     }
   };
 
-  if (vc.state === "ACTIVE") {
-    if (vc.isMuted) {
-      try {
-        await vc.unmute();
-      } catch (err) {
-        debugLog("VOICE_CHAT_UNMUTE_FAILED", err);
-      }
+  const tryUnmute = async () => {
+    if (vc.state !== "ACTIVE") return;
+    if (!vc.isMuted) return;
+    try {
+      await vc.unmute();
+    } catch (err) {
+      debugLog("VOICE_CHAT_UNMUTE_FAILED", err);
     }
+  };
+
+  if (!opts.forceRestart && vc.state === "ACTIVE") {
+    await tryUnmute();
     startListeningSafe();
-    debugLog("VOICE_CHAT_LISTENING", {
-      ok: true,
-      path: "active",
-      muted: vc.isMuted,
-    });
-    return true;
+    const ok = vc.state === "ACTIVE" && !vc.isMuted;
+    debugLog("VOICE_CHAT_LISTENING", { ok, path: "active", muted: vc.isMuted });
+    return ok;
   }
 
-  if (!opts.forceRestart) {
+  if (!opts.forceRestart && vc.state !== "ACTIVE") {
     try {
       await vc.start({ defaultMuted: false });
     } catch (err) {
       debugLog("VOICE_CHAT_START_FAILED", err);
     }
-    if (vc.state === "ACTIVE") {
-      if (vc.isMuted) {
-        try {
-          await vc.unmute();
-        } catch {
-          /* ignore */
-        }
-      }
-      startListeningSafe();
-      return true;
-    }
+    await tryUnmute();
     startListeningSafe();
+    const ok = vc.state === "ACTIVE" && !vc.isMuted;
     debugLog("VOICE_CHAT_LISTENING", {
-      ok: false,
-      path: "soft",
+      ok,
+      path: "soft-start",
       state: vc.state,
       muted: vc.isMuted,
     });
-    return false;
+    return ok;
   }
 
-  // Hard restart under user gesture only.
+  // Hard restart under user gesture — SDK getUserMedia must be the only mic grab.
   try {
     vc.stop();
   } catch {
     /* already stopped */
   }
 
-  let probe: MediaStream | null = null;
   try {
-    probe = await acquireMicrophoneStream();
     await vc.start({ defaultMuted: false });
   } catch (err) {
     debugLog("VOICE_CHAT_RESTART_FAILED", err);
-    probe?.getTracks().forEach((t) => t.stop());
     startListeningSafe();
     return false;
   }
-  probe.getTracks().forEach((t) => t.stop());
 
-  if (vc.isMuted) {
-    try {
-      await vc.unmute();
-    } catch {
-      /* ignore */
-    }
+  await tryUnmute();
+  // Brief settle — LiveKit sometimes reports muted for one tick after start.
+  for (let i = 0; i < 10 && vc.isMuted && vc.state === "ACTIVE"; i++) {
+    await tryUnmute();
+    await new Promise((r) => window.setTimeout(r, 50));
   }
+
   startListeningSafe();
-  const ok = vc.state === "ACTIVE";
+  const ok = vc.state === "ACTIVE" && !vc.isMuted;
   debugLog("VOICE_CHAT_LISTENING", {
     ok,
     path: "restart",
@@ -609,19 +599,26 @@ export function useLiveAvatarSession() {
 
     try {
       if (!shouldMute) {
-        // Unmute under this click — recreate track if needed (Safari).
+        // Unmute under this click — first await should be voiceChat.start/unmute
+        // (no prior AudioContext / parallel getUserMedia).
         let ok = await ensureVoiceChatListening(session, {
-          forceRestart: session.voiceChat.state !== "ACTIVE",
+          forceRestart:
+            session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted,
         });
-        if (!ok || session.voiceChat.isMuted) {
+        if (!ok) {
           ok = await ensureVoiceChatListening(session, { forceRestart: true });
         }
-        if (!ok || session.voiceChat.isMuted) {
+        if (!ok) {
           setMicMuted(true);
+          const denied = await readMicrophonePermissionState();
           setError(
-            lang === "en"
-              ? "Couldn’t enable the microphone. Check Safari → Settings for This Website → Microphone."
-              : "Nepodarilo sa zapnúť mikrofón. Skontrolujte Safari → Nastavenia pre tento web → Mikrofón."
+            denied === "denied"
+              ? lang === "en"
+                ? "Microphone is blocked for this site. Safari → Settings for This Website → Microphone → Allow."
+                : "Mikrofón je pre tento web zablokovaný. Safari → Nastavenia pre tento web → Mikrofón → Povoliť."
+              : lang === "en"
+                ? "Couldn’t enable the microphone for the avatar. Click “Zapnúť mikrofón” again."
+                : "Nepodarilo sa zapnúť mikrofón pre avatara. Kliknite znova na „Zapnúť mikrofón“."
           );
           return;
         }
@@ -671,17 +668,17 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // Warm mic under “Spustiť” (same as campaign). Keep the stream until after
-      // session.start() so the SDK can publish a local audio track.
-      let micWarmup: MediaStream | null = null;
+      // Grant mic under “Spustiť”, then RELEASE it before session.start().
+      // Holding a parallel getUserMedia while the SDK calls createLocalAudioTrack
+      // breaks Safari (muted / dead LiveKit mic — “Zapnúť mikrofón” appears broken).
       try {
-        micWarmup = await acquireMicrophoneStream();
+        await requestMicrophoneAccess();
         micPermissionGrantedRef.current = true;
         setMicPermissionGranted(true);
       } catch (err) {
         micPermissionGrantedRef.current = false;
         setMicPermissionGranted(false);
-        console.error("[LiveAvatar] mic warmup on start:", micErrorDetail(err));
+        console.error("[LiveAvatar] mic grant on start:", micErrorDetail(err));
       }
 
       try {
@@ -1202,8 +1199,7 @@ export function useLiveAvatarSession() {
             }, START_TIMEOUT_MS);
           }),
         ]);
-        // If configureSession failed to open the mic, retry once while Spustiť's
-        // warmup stream is still alive (helps Safari publish a LiveKit track).
+        // If configureSession failed to open the mic, retry once (permission already granted).
         if (sessionLike.voiceChat.state !== "ACTIVE") {
           try {
             await sessionLike.voiceChat.start({ defaultMuted: true });
@@ -1211,9 +1207,6 @@ export function useLiveAvatarSession() {
             debugLog("VOICE_CHAT_RETRY_AFTER_START_FAILED", err);
           }
         }
-        // Release warmup tracks after SDK has published its own mic track.
-        micWarmup?.getTracks().forEach((t) => t.stop());
-        micWarmup = null;
         // session.start() resolved = CONNECTED; ensure we don't miss the event.
         gate.sessionConnected = true;
         if (!gate.streamReady) {
@@ -1236,8 +1229,6 @@ export function useLiveAvatarSession() {
         });
       } catch (err) {
         clearKeepAlive();
-        micWarmup?.getTracks().forEach((t) => t.stop());
-        micWarmup = null;
         clearMaxDurationTimer();
         resetIntroGate();
         try {
