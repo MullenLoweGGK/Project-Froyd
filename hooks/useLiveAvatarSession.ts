@@ -734,10 +734,10 @@ export function useLiveAvatarSession() {
         // Campaign: start muted until after the scripted intro.
         // Stay on SDK 0.0.13 — 0.0.19+ waitForRequiredParticipants hung on “Pripravujeme avatara…”.
         const isCoursesSession = !config.openingText?.trim();
+        // Always start muted in configureSession — createLocalAudioTrack is the same,
+        // but unmuted publish during start has been flaky; courses unmutes after CONNECTED.
         const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: isCoursesSession
-            ? { defaultMuted: false }
-            : { defaultMuted: true },
+          voiceChat: { defaultMuted: true },
         });
         const sessionLike = session as unknown as SessionLike;
         sessionRef.current = sessionLike;
@@ -810,41 +810,48 @@ export function useLiveAvatarSession() {
 
           if (videoRef.current) {
             try {
+              sessionLike.attach(videoRef.current);
+            } catch {
+              /* stream may not be fully ready yet */
+            }
+            try {
               await videoRef.current.play();
             } catch {
-              /* autoplay may wait for the confirm click */
+              /* autoplay may wait for gesture */
             }
           }
 
           if (!isCurrentSession()) return;
 
-          // Courses: skip the ready-gate click loop entirely — go live immediately.
-          // Mic was granted on Spustiť; muting/restarting here is what broke Safari.
+          // Courses: skip the ready-gate click loop — show live UI immediately,
+          // finish mic/audio in the background so we never stick on “Pripravujeme…”.
           if (isCoursesSession) {
             gate.introStarted = true;
             gate.conversationActive = true;
-            await ensureVoiceChatListening(sessionLike, { forceRestart: false });
-            if (videoRef.current) {
-              await primeAvatarMedia(videoRef.current, () => {
-                try {
-                  sessionLike.attach(videoRef.current as HTMLVideoElement);
-                } catch {
-                  /* ignore */
-                }
-              });
-            }
-            await preferMediaLoudspeaker(videoRef.current);
-            await unlockBrowserAudio();
-            if (!isCurrentSession()) return;
             setPreparingIntro(false);
             setError(null);
-            setMicMuted(sessionLike.voiceChat.isMuted);
             setStatus("ready");
             debugLog("COURSES_LIVE", {
               sessionId: gate.sessionId,
               state: sessionLike.voiceChat.state,
               muted: sessionLike.voiceChat.isMuted,
             });
+            void (async () => {
+              await ensureVoiceChatListening(sessionLike, { forceRestart: false });
+              if (!isCurrentSession()) return;
+              setMicMuted(sessionLike.voiceChat.isMuted);
+              if (videoRef.current) {
+                await primeAvatarMedia(videoRef.current, () => {
+                  try {
+                    sessionLike.attach(videoRef.current as HTMLVideoElement);
+                  } catch {
+                    /* ignore */
+                  }
+                });
+              }
+              await preferMediaLoudspeaker(videoRef.current);
+              await unlockBrowserAudio();
+            })();
             return;
           }
 
@@ -871,6 +878,25 @@ export function useLiveAvatarSession() {
             debugLog("SESSION_CONNECTED", { sessionId });
             gate.sessionConnected = true;
             void maybeEnterReadyGate();
+            // SDK only emits STREAM_READY when BOTH remote A/V tracks exist.
+            // If audio is late/missing, we'd stay on “Pripravujeme avatara…” forever.
+            // 2–3s multimodal race mitigation: proceed without the audio track.
+            window.setTimeout(() => {
+              if (!isCurrentSession() || gate.readyPromptShown) return;
+              if (!gate.streamReady) {
+                debugLog("STREAM_READY_FALLBACK", { sessionId });
+                gate.streamReady = true;
+                if (videoRef.current) {
+                  try {
+                    sessionLike.attach(videoRef.current);
+                    void videoRef.current.play().catch(() => null);
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                void maybeEnterReadyGate();
+              }
+            }, 2_500);
           }
           if (state === SessionState.DISCONNECTING) setStatus("stopping");
           if (state === SessionState.DISCONNECTED) {
@@ -1135,9 +1161,7 @@ export function useLiveAvatarSession() {
         // warmup stream is still alive (helps Safari publish a LiveKit track).
         if (sessionLike.voiceChat.state !== "ACTIVE") {
           try {
-            await sessionLike.voiceChat.start({
-              defaultMuted: isCoursesSession ? false : true,
-            });
+            await sessionLike.voiceChat.start({ defaultMuted: true });
           } catch (err) {
             debugLog("VOICE_CHAT_RETRY_AFTER_START_FAILED", err);
           }
@@ -1145,10 +1169,25 @@ export function useLiveAvatarSession() {
         // Release warmup tracks after SDK has published its own mic track.
         micWarmup?.getTracks().forEach((t) => t.stop());
         micWarmup = null;
+        // session.start() resolved = CONNECTED; ensure we don't miss the event.
+        gate.sessionConnected = true;
+        if (!gate.streamReady) {
+          // Give remote A/V tracks a brief moment, then the CONNECTED fallback runs.
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 2_500);
+          });
+          if (!gate.streamReady) {
+            debugLog("STREAM_READY_FALLBACK_AFTER_START", { sessionId });
+            gate.streamReady = true;
+          }
+        }
+        void maybeEnterReadyGate();
         debugLog("VOICE_CHAT_AFTER_START", {
           sessionId,
           state: sessionLike.voiceChat.state,
           muted: sessionLike.voiceChat.isMuted,
+          streamReady: gate.streamReady,
+          readyShown: gate.readyPromptShown,
         });
       } catch (err) {
         clearKeepAlive();
