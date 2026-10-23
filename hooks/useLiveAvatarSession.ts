@@ -508,6 +508,8 @@ export function useLiveAvatarSession() {
 
       const vc = session.voiceChat;
       try {
+        // IMPORTANT (Safari): do NOT open a parallel getUserMedia() here.
+        // voiceChat.start → createLocalAudioTrack is the only mic acquire.
         if (vc.state !== "ACTIVE") {
           await vc.start({ defaultMuted: false });
         } else if (vc.isMuted) {
@@ -515,10 +517,8 @@ export function useLiveAvatarSession() {
         }
       } catch (err) {
         debugLog("ENSURE_MIC_PRIMARY_FAILED", err);
-        // Refresh permission under this click, then start again.
+        // One more start/unmute under the same click — no probe+stop.
         try {
-          await requestMicrophoneAccess();
-          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
           if (vc.state !== "ACTIVE") {
             await vc.start({ defaultMuted: false });
           } else if (vc.isMuted) {
