@@ -552,17 +552,22 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // Warm the mic under this click so session.start() → voiceChat.start() can
-      // createLocalAudioTrack. Keep the stream until after session.start().
+      // Courses (no openingText): do NOT probe the mic here — Safari would either
+      // prompt too early or, on a later click, refuse a second prompt. Mic is
+      // acquired under “Začať rozhovor” in confirmReady as the first await.
+      // Campaign: warm mic under “Spustiť” so session.start() can publish audio.
+      const isCoursesFlow = !config.openingText?.trim();
       let micWarmup: MediaStream | null = null;
-      try {
-        micWarmup = await acquireMicrophoneStream();
-        micPermissionGrantedRef.current = true;
-        setMicPermissionGranted(true);
-      } catch (err) {
-        micPermissionGrantedRef.current = false;
-        setMicPermissionGranted(false);
-        console.error("[LiveAvatar] mic warmup on start:", micErrorDetail(err));
+      if (!isCoursesFlow) {
+        try {
+          micWarmup = await acquireMicrophoneStream();
+          micPermissionGrantedRef.current = true;
+          setMicPermissionGranted(true);
+        } catch (err) {
+          micPermissionGrantedRef.current = false;
+          setMicPermissionGranted(false);
+          console.error("[LiveAvatar] mic warmup on start:", micErrorDetail(err));
+        }
       }
 
       try {
@@ -1065,9 +1070,9 @@ export function useLiveAvatarSession() {
     if (!gate.openingText) {
       let probe: MediaStream | null = null;
       try {
-        await unlockBrowserAudio();
-        await preferMediaLoudspeaker(videoRef.current);
-        // Keep a live mic under the gesture so voiceChat.start() can publish audio.
+        // CRITICAL (Safari): getUserMedia MUST be the first await under the click.
+        // Any prior await (AudioContext, speaker routing, …) burns the user gesture
+        // and Safari denies the mic with NO permission dialog.
         probe = await acquireMicrophoneStream();
         micPermissionGrantedRef.current = true;
         setMicPermissionGranted(true);
@@ -1089,6 +1094,8 @@ export function useLiveAvatarSession() {
       gate.conversationActive = true;
 
       try {
+        await unlockBrowserAudio();
+        await preferMediaLoudspeaker(videoRef.current);
         // If voiceChat failed during session.start(), unmute alone is a silent no-op.
         await ensureVoiceChatListening(session);
         debugLog("CONVERSATION_LIVE", {

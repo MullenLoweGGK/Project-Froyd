@@ -145,9 +145,12 @@ export function AvatarModal({
     }
   }
 
-  const readyPrimaryLabel = micPermissionGranted
-    ? copy.startNow
-    : copy.allowMicAndStart;
+  // Courses: one CTA — mic permission is requested on this same click.
+  // Campaign may still show “Allow microphone…” when grant is missing.
+  const readyPrimaryLabel =
+    isCoursesFlow || micPermissionGranted
+      ? copy.startNow
+      : copy.allowMicAndStart;
 
   return (
     <div
