@@ -600,12 +600,9 @@ export function useLiveAvatarSession() {
           gate.readyPromptShown = true;
           debugLog("READY_GATE", { sessionId: gate.sessionId });
 
-          try {
-            await sessionLike.voiceChat.mute();
-          } catch (err) {
-            debugLog("READY_GATE_MUTE_FAILED", err);
-          }
-
+          // Courses (this branch): do NOT mute here. LiveKit stopOnMute kills the
+          // track; unmute after “Ahoj” has no user gesture on Safari, so both sides
+          // go silent. Keep the default unmuted mic from voiceChat: {} through the gate.
           if (videoRef.current) {
             try {
               await videoRef.current.play();
@@ -680,7 +677,22 @@ export function useLiveAvatarSession() {
           } catch (err) {
             debugLog("START_LISTENING_FAILED", err);
           }
-          // Mic unmute can flip Android into call/earpiece mode — re-assert media speaker.
+          setMicMuted(sessionLike.voiceChat.isMuted);
+          // Re-assert playback + speaker so both sides stay audible after “Ahoj”.
+          if (videoRef.current) {
+            videoRef.current.muted = false;
+            videoRef.current.volume = 1;
+            try {
+              sessionLike.attach(videoRef.current);
+            } catch {
+              /* ignore */
+            }
+            try {
+              await videoRef.current.play();
+            } catch {
+              /* ignore */
+            }
+          }
           await preferMediaLoudspeaker(videoRef.current);
         };
 
@@ -961,17 +973,12 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    try {
-      await session.voiceChat.mute();
-    } catch (err) {
-      debugLog("INTRO_MUTE_FAILED", err);
-    }
-
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
-
+    // Keep mic live (no mute) — Safari cannot unmute after stopOnMute without a
+    // fresh click. introInProgress still blocks turn counting during “Ahoj”.
     debugLog("INTRO_SCHEDULED", {
       sessionId: gate.sessionId,
       bufferMs: INTRO_BUFFER_MS,
+      micMuted: session.voiceChat.isMuted,
     });
 
     await wait(INTRO_BUFFER_MS, (id) => {
@@ -998,6 +1005,18 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
+    // Ensure mic is unmuted under this click before “Ahoj” (gesture still valid).
+    try {
+      await session.voiceChat.unmute();
+    } catch (err) {
+      debugLog("PRE_INTRO_UNMUTE_FAILED", err);
+    }
+    try {
+      session.startListening();
+    } catch (err) {
+      debugLog("PRE_INTRO_START_LISTENING_FAILED", err);
+    }
+
     if (gate.openingText) {
       gate.introInProgress = true;
       setPreparingIntro(false);
@@ -1009,24 +1028,28 @@ export function useLiveAvatarSession() {
       } catch (err) {
         gate.introInProgress = false;
         debugLog("INTRO_REPEAT_FAILED", err);
-        gate.conversationActive = true;
-        try {
-          await session.voiceChat.unmute();
-        } catch {
-          /* ignore */
-        }
-        setStatus("ready");
+        void (async () => {
+          gate.conversationActive = true;
+          try {
+            await session.voiceChat.unmute();
+          } catch {
+            /* ignore */
+          }
+          try {
+            session.startListening();
+          } catch {
+            /* ignore */
+          }
+          setMicMuted(session.voiceChat.isMuted);
+          setStatus("ready");
+        })();
       }
       return true;
     }
 
     setPreparingIntro(false);
     gate.conversationActive = true;
-    try {
-      await session.voiceChat.unmute();
-    } catch {
-      /* ignore */
-    }
+    setMicMuted(session.voiceChat.isMuted);
     setStatus("ready");
     return true;
   }, []);
