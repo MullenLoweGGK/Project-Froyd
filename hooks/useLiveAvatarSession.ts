@@ -66,6 +66,23 @@ function markMicrophoneAllowed(
   writeStoredMicGranted();
 }
 
+/**
+ * Safari only shows the mic permission dialog for plain `{ audio: true }`
+ * under a user gesture. HeyGen’s createLocalAudioTrack uses advanced
+ * constraints that can fail as OverconstrainedError with NO dialog.
+ * Call this first on Začať, then voiceChat.start() while permission is fresh.
+ */
+async function requestMicPermissionUnderGesture(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  stream.getTracks().forEach((t) => t.stop());
+}
+
+function micErrorDetail(err: unknown): string {
+  if (!err || typeof err !== "object") return String(err);
+  const e = err as { name?: string; message?: string };
+  return [e.name, e.message].filter(Boolean).join(": ") || String(err);
+}
+
 export type LiveAvatarConfig = {
   avatarId: string;
   contextId?: string;
@@ -480,15 +497,24 @@ export function useLiveAvatarSession() {
       const activate = opts?.activateConversation !== false;
       const gate = introGateRef.current;
       if (gate && activate) {
-        // Never leave Zapnúť blocked because speak_ended was missed.
         gate.introInProgress = false;
         gate.conversationActive = true;
       }
 
       const vc = session.voiceChat;
+
+      // 1) Force Safari’s permission dialog (plain constraints, user gesture).
       try {
-        // Sole mic acquire path — must run under Začať click (Safari gesture).
-        // Creates the track that shows the red mic icon in the URL bar.
+        await requestMicPermissionUnderGesture();
+        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+      } catch (err) {
+        console.error("[LiveAvatar] getUserMedia permission failed", micErrorDetail(err));
+        setMicMuted(true);
+        return false;
+      }
+
+      // 2) Immediately start LiveKit voice chat (red URL-bar icon).
+      try {
         if (vc.state !== "ACTIVE") {
           console.info("[LiveAvatar] voiceChat.start under user gesture", {
             prevState: vc.state,
@@ -498,7 +524,8 @@ export function useLiveAvatarSession() {
           await vc.unmute();
         }
       } catch (err) {
-        console.error("[LiveAvatar] voiceChat.start failed", err);
+        console.error("[LiveAvatar] voiceChat.start failed", micErrorDetail(err));
+        // Permission is granted — one more try in the same click stack.
         try {
           if (vc.state !== "ACTIVE") {
             await vc.start({ defaultMuted: false });
@@ -506,8 +533,18 @@ export function useLiveAvatarSession() {
             await vc.unmute();
           }
         } catch (err2) {
-          console.error("[LiveAvatar] voiceChat.start retry failed", err2);
+          console.error("[LiveAvatar] voiceChat.start retry failed", micErrorDetail(err2));
         }
+      }
+
+      // SDK start() can no-op without throwing when room is not connected.
+      if (vc.state !== "ACTIVE") {
+        console.error("[LiveAvatar] voiceChat still not ACTIVE", {
+          state: vc.state,
+          muted: vc.isMuted,
+        });
+        setMicMuted(true);
+        return false;
       }
 
       try {
@@ -516,8 +553,7 @@ export function useLiveAvatarSession() {
         debugLog("ENSURE_MIC_START_LISTENING_FAILED", err);
       }
 
-      const muted =
-        session.voiceChat.isMuted || session.voiceChat.state !== "ACTIVE";
+      const muted = vc.isMuted;
       setMicMuted(muted);
       if (!muted) {
         markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
@@ -1048,9 +1084,35 @@ export function useLiveAvatarSession() {
   const confirmReady = useCallback(async (): Promise<boolean> => {
     const gate = introGateRef.current;
     const session = sessionRef.current;
-    if (!gate || !session) return false;
-    if (!gate.streamReady || !gate.sessionConnected) return false;
-    if (gate.introStarted) return false;
+    if (!gate || !session) {
+      setError(
+        languageRef.current === "en"
+          ? "Session is not ready yet. Tap Start, wait for the avatar, then allow the microphone."
+          : "Relácia ešte nie je pripravená. Ťuknite Spustiť, počkajte na avatara a potom povoľte mikrofón."
+      );
+      return false;
+    }
+    if (!gate.streamReady || !gate.sessionConnected) {
+      setError(
+        languageRef.current === "en"
+          ? "Avatar is still connecting. Wait a moment, then tap again."
+          : "Avatar sa ešte pripája. Počkajte chvíľu a ťuknite znova."
+      );
+      setStatus("awaiting-ready");
+      return false;
+    }
+    if (gate.introStarted) {
+      // Previous attempt may have left the gate stuck — allow retry.
+      gate.introStarted = false;
+    }
+
+    const abortConfirm = (message: string) => {
+      gate.introStarted = false;
+      setPreparingIntro(false);
+      setError(message);
+      setStatus("awaiting-ready");
+      return false as const;
+    };
 
     gate.introStarted = true;
     setPreparingIntro(true);
@@ -1060,34 +1122,38 @@ export function useLiveAvatarSession() {
       voiceChatState: session.voiceChat.state,
     });
 
-    // CRITICAL (Safari): first await under this click MUST be voiceChat.start().
-    // That is what shows the red mic icon in the URL bar.
+    // First awaits under this click: plain getUserMedia (Safari dialog) →
+    // voiceChat.start (red URL-bar mic icon). Do not insert delays before this.
     const micLive = await ensureMicLiveUnderGesture(session, {
       activateConversation: false,
     });
     if (introGateRef.current !== gate || sessionRef.current !== session) {
-      return false;
+      return abortConfirm(
+        toHumanError("disconnect", undefined, languageRef.current)
+      );
     }
     if (!micLive) {
       console.error("[LiveAvatar] mic not live after Začať", {
         state: session.voiceChat.state,
         muted: session.voiceChat.isMuted,
       });
-      gate.introStarted = false;
-      setPreparingIntro(false);
-      setError(toHumanError("mic-denied", undefined, languageRef.current));
-      setStatus("awaiting-ready");
-      return false;
+      return abortConfirm(
+        toHumanError("mic-denied", undefined, languageRef.current)
+      );
     }
 
     setError(null);
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
+    if (introGateRef.current !== gate || sessionRef.current !== session) {
+      return abortConfirm(toHumanError("disconnect", undefined, languageRef.current));
+    }
 
     await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
+    if (introGateRef.current !== gate || sessionRef.current !== session) {
+      return abortConfirm(toHumanError("disconnect", undefined, languageRef.current));
+    }
 
     if (videoRef.current) {
       await primeAvatarMedia(videoRef.current, () => {
@@ -1100,10 +1166,11 @@ export function useLiveAvatarSession() {
       await preferMediaLoudspeaker(videoRef.current);
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
+    if (introGateRef.current !== gate || sessionRef.current !== session) {
+      return abortConfirm(toHumanError("disconnect", undefined, languageRef.current));
+    }
 
     // Mic already live from the click above. Keep it through “Ahoj”.
-    // introInProgress only blocks turn counting / mute toggle, not Zapnúť.
     debugLog("INTRO_SCHEDULED", {
       sessionId: gate.sessionId,
       bufferMs: INTRO_BUFFER_MS,
@@ -1115,7 +1182,9 @@ export function useLiveAvatarSession() {
       introTimerRef.current = id;
     });
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
+    if (introGateRef.current !== gate || sessionRef.current !== session) {
+      return abortConfirm(toHumanError("disconnect", undefined, languageRef.current));
+    }
 
     if (videoRef.current) {
       videoRef.current.muted = false;
@@ -1133,7 +1202,9 @@ export function useLiveAvatarSession() {
       }
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
+    if (introGateRef.current !== gate || sessionRef.current !== session) {
+      return abortConfirm(toHumanError("disconnect", undefined, languageRef.current));
+    }
 
     // Soft re-assert (gesture may be gone — only works if track stayed live).
     try {

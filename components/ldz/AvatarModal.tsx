@@ -42,7 +42,6 @@ export function AvatarModal({
     confirmReady,
     preparingIntro,
     questionLimitReached,
-    micPermissionGranted,
   } = useLiveAvatarSession();
 
   useEffect(() => {
@@ -210,7 +209,7 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        {error && !(awaitingReady && micPermissionGranted) ? (
+        {error ? (
           <p className="ldz-modal__error" role="alert">
             {error}
           </p>
