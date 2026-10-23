@@ -72,7 +72,10 @@ type SessionLike = {
   stopListening: () => string;
   startListening: () => string;
   voiceChat: {
+    state: string;
     isMuted: boolean;
+    start: (config?: { defaultMuted?: boolean }) => Promise<void>;
+    stop: () => void;
     mute: () => Promise<void>;
     unmute: () => Promise<void>;
     on: (event: string, cb: (...args: never[]) => void) => void;
@@ -957,20 +960,45 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    // ── Courses (no scripted intro): unmute + listen under THIS click ──
-    // Do not mute/wait first — LiveKit stopOnMute ends the track and Safari
-    // cannot reacquire after the 1.2s intro buffer (gesture is gone).
+    // ── Courses (no scripted intro) ──
+    // Fresh voiceChat.start under THIS click — required on Safari Private, where
+    // the mic track created during session.start() (no gesture) is often silent.
     if (!gate.openingText) {
       gate.conversationActive = true;
+
       try {
-        await session.voiceChat.unmute();
+        session.voiceChat.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        await session.voiceChat.start({ defaultMuted: false });
       } catch (err) {
-        debugLog("COURSES_UNMUTE_FAILED", err);
+        debugLog("COURSES_VOICE_CHAT_START_FAILED", err);
+        // Fallback: unmute whatever track exists from session.start().
+        try {
+          await session.voiceChat.unmute();
+        } catch (unmuteErr) {
+          debugLog("COURSES_UNMUTE_FAILED", unmuteErr);
+        }
       }
       try {
         session.startListening();
       } catch (err) {
         debugLog("COURSES_START_LISTENING_FAILED", err);
+      }
+
+      if (session.voiceChat.isMuted) {
+        gate.introStarted = false;
+        setPreparingIntro(false);
+        setMicMuted(true);
+        setError(
+          languageRef.current === "en"
+            ? "Microphone didn’t stay on. Avoid Private browsing, allow the mic for this site, then tap Start conversation again."
+            : "Mikrofón sa nepodarilo udržať zapnutý. Skúste bežné (nie súkromné) okno Safari, povoľte mikrofón pre tento web a znova ťuknite na Začať rozhovor."
+        );
+        setStatus("awaiting-ready");
+        return false;
       }
 
       await preferMediaLoudspeaker(videoRef.current);
@@ -994,8 +1022,9 @@ export function useLiveAvatarSession() {
       }
 
       setPreparingIntro(false);
-      setMicMuted(session.voiceChat.isMuted);
+      setMicMuted(false);
       setStatus("ready");
+      armMaxDurationTimer();
       return true;
     }
 
@@ -1079,7 +1108,7 @@ export function useLiveAvatarSession() {
       setStatus("ready");
     }
     return true;
-  }, []);
+  }, [armMaxDurationTimer]);
 
   useEffect(() => {
     return () => {

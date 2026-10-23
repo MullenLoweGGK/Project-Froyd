@@ -38,7 +38,7 @@ const sk: ModalCopy = {
   readyEmphasis:
     "Hovorte prirodzene, ako na kurze. Počkajte, kým avatar dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Ťuknite na „Začať rozhovor“ — vtedy sa zapne mikrofón. Ak Safari vypýta prístup, povoľte ho.",
+    "Ťuknite na „Začať rozhovor“ — vtedy sa zapne mikrofón. Ak Safari vypýta prístup, povoľte ho. Na testovanie použite bežné okno (nie Súkromné) — v private móde Safari mikrofón často neudrží.",
   preparingTitle: "Zapíname počúvanie…",
   preparingCopy: "Ešte chvíľu.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
@@ -90,7 +90,7 @@ const en: ModalCopy = {
   readyEmphasis:
     "Speak naturally. Wait until the avatar finishes before continuing.",
   readyMicHint:
-    "Tap “Start conversation” to turn the microphone on. If Safari asks for access, allow it.",
+    "Tap “Start conversation” to turn the microphone on. If Safari asks for access, allow it. Prefer a normal window (not Private) — Private Safari often drops the mic.",
   preparingTitle: "Enabling listening…",
   preparingCopy: "One moment.",
   questionLimitStatus: "Question limit — you can end the conversation",
