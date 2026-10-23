@@ -142,10 +142,11 @@ type SessionLike = {
 };
 
 /**
- * Ensure LiveKit mic is ACTIVE + unmuted + agent listening.
- * Call under a user gesture (Začať / Zapnúť). Prefer unmute; only start() when
- * INACTIVE. Avoid stop() unless recreate is required — stop+start often throws
- * on Safari after leave/re-enter.
+ * Ensure LiveKit mic is listening under a user gesture (Začať / Zapnúť).
+ *
+ * CRITICAL: If voiceChat is already ACTIVE (from session.start), only unmute +
+ * startListening. Never stop()+start() an ACTIVE chat — that tears down a live
+ * track and Safari often cannot recreate it, which blocked “Začať rozhovor”.
  */
 async function ensureMicLive(session: SessionLike): Promise<boolean> {
   const vc = session.voiceChat;
@@ -157,46 +158,29 @@ async function ensureMicLive(session: SessionLike): Promise<boolean> {
     }
   };
 
-  if (vc.state === "ACTIVE" && !vc.isMuted) {
+  debugLog("ENSURE_MIC_LIVE", { state: vc.state, muted: vc.isMuted });
+
+  // Already running from session.start({ voiceChat: true }) — do not recreate.
+  if (vc.state === "ACTIVE") {
+    if (vc.isMuted) {
+      try {
+        await vc.unmute();
+      } catch (err) {
+        debugLog("ENSURE_MIC_UNMUTE_FAILED", err);
+      }
+    }
     listen();
+    // ACTIVE is success even if isMuted flickers for a tick after unmute.
     return true;
   }
 
-  if (vc.state === "ACTIVE") {
-    try {
-      await vc.unmute();
-    } catch (err) {
-      debugLog("ENSURE_MIC_UNMUTE_FAILED", err);
-    }
-    if (!vc.isMuted) {
-      listen();
-      return true;
-    }
-  }
-
-  // INACTIVE (or still muted with a dead track): start fresh without stop when
-  // possible; stop only if SDK thinks chat is already started.
-  if (vc.state !== "INACTIVE") {
-    try {
-      vc.stop();
-    } catch {
-      /* ignore */
-    }
-  }
-
+  // Not started yet — open mic under this click (no prior stop).
   try {
     await vc.start({ defaultMuted: false });
   } catch (err) {
     debugLog("ENSURE_MIC_START_FAILED", err);
     try {
       await requestMicrophoneAccess();
-      if (vc.state !== "INACTIVE") {
-        try {
-          vc.stop();
-        } catch {
-          /* ignore */
-        }
-      }
       await vc.start({ defaultMuted: false });
     } catch (retryErr) {
       debugLog("ENSURE_MIC_START_RETRY_FAILED", retryErr);
@@ -204,7 +188,6 @@ async function ensureMicLive(session: SessionLike): Promise<boolean> {
     }
   }
 
-  // start() can no-op silently when the room is not connected.
   if (vc.state !== "ACTIVE") {
     debugLog("ENSURE_MIC_NOT_ACTIVE", { state: vc.state });
     return false;
@@ -219,7 +202,7 @@ async function ensureMicLive(session: SessionLike): Promise<boolean> {
   }
 
   listen();
-  return !vc.isMuted;
+  return true;
 }
 
 type IntroGate = {
@@ -604,7 +587,29 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      const ok = await ensureMicLive(session);
+      let ok = await ensureMicLive(session);
+
+      // Explicit Zapnúť: last-resort recreate only if still muted/inactive.
+      if (!ok || session.voiceChat.isMuted || session.voiceChat.state !== "ACTIVE") {
+        try {
+          session.voiceChat.stop();
+        } catch {
+          /* ignore */
+        }
+        try {
+          await session.voiceChat.start({ defaultMuted: false });
+          try {
+            session.startListening();
+          } catch {
+            /* ignore */
+          }
+          ok = session.voiceChat.state === "ACTIVE" && !session.voiceChat.isMuted;
+        } catch (err) {
+          debugLog("MIC_TOGGLE_RECREATE_FAILED", err);
+          ok = false;
+        }
+      }
+
       if (!ok) {
         setMicMuted(true);
         const denied = (await readMicrophonePermissionState()) === "denied";
@@ -1164,20 +1169,15 @@ export function useLiveAvatarSession() {
         }
       }
 
+      // Never block entering the conversation on mic — destroy/recreate was
+      // leaving users stuck on this screen. Activate best-effort under the click.
       gate.conversationActive = true;
       const micOk = await ensureMicLive(session);
-      if (!micOk) {
-        gate.introStarted = false;
-        setPreparingIntro(false);
-        setMicMuted(true);
-        setError(
-          languageRef.current === "en"
-            ? "Couldn’t turn the microphone on. Click “Začať rozhovor hneď” again."
-            : "Nepodarilo sa zapnúť mikrofón. Kliknite znova na „Začať rozhovor hneď“."
-        );
-        setStatus("awaiting-ready");
-        return false;
-      }
+      debugLog("COURSES_MIC_AFTER_CONFIRM", {
+        ok: micOk,
+        state: session.voiceChat.state,
+        muted: session.voiceChat.isMuted,
+      });
 
       await preferMediaLoudspeaker(videoRef.current);
       await unlockBrowserAudio();
@@ -1200,7 +1200,14 @@ export function useLiveAvatarSession() {
       }
 
       setPreparingIntro(false);
-      setMicMuted(false);
+      setMicMuted(session.voiceChat.isMuted);
+      setError(
+        micOk
+          ? null
+          : languageRef.current === "en"
+            ? "Microphone may be off — use “Zapnúť mikrofón” if the avatar does not hear you."
+            : "Mikrofón môže byť vypnutý — ak vás avatar nepočuje, použite „Zapnúť mikrofón“."
+      );
       setStatus("ready");
       return true;
     }
