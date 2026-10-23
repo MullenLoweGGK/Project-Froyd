@@ -128,9 +128,11 @@ type SessionLike = {
 /**
  * Make voice chat ACTIVE + unmuted and tell the agent to listen.
  *
- * IMPORTANT (Safari): do NOT open a parallel getUserMedia() before voiceChat.start().
- * A second live mic stream often makes LiveKit’s createLocalAudioTrack fail or stay
- * muted — which looked like “Zapnúť mikrofón does nothing”.
+ * Safari / LiveKit notes:
+ * - Do NOT open a parallel getUserMedia() before voiceChat.start().
+ * - After mute(), LiveKit often stop()s the mic track (stopOnMute). unmute() then
+ *   calls restartTrack()/getUserMedia — that MUST be the first await under a click.
+ * - Prefer unmute() over stop()+start() when already ACTIVE; stop+start races Safari.
  */
 async function ensureVoiceChatListening(
   session: SessionLike,
@@ -155,11 +157,20 @@ async function ensureVoiceChatListening(
     }
   };
 
-  if (!opts.forceRestart && vc.state === "ACTIVE") {
+  const settleUnmuted = async () => {
+    for (let i = 0; i < 12 && vc.state === "ACTIVE" && vc.isMuted; i++) {
+      await tryUnmute();
+      await new Promise((r) => window.setTimeout(r, 40));
+    }
+  };
+
+  // Already live — unmute under this call stack (user gesture when from Zapnúť).
+  if (vc.state === "ACTIVE" && !opts.forceRestart) {
     await tryUnmute();
+    await settleUnmuted();
     startListeningSafe();
     const ok = vc.state === "ACTIVE" && !vc.isMuted;
-    debugLog("VOICE_CHAT_LISTENING", { ok, path: "active", muted: vc.isMuted });
+    debugLog("VOICE_CHAT_LISTENING", { ok, path: "unmute", muted: vc.isMuted });
     return ok;
   }
 
@@ -170,6 +181,7 @@ async function ensureVoiceChatListening(
       debugLog("VOICE_CHAT_START_FAILED", err);
     }
     await tryUnmute();
+    await settleUnmuted();
     startListeningSafe();
     const ok = vc.state === "ACTIVE" && !vc.isMuted;
     debugLog("VOICE_CHAT_LISTENING", {
@@ -181,7 +193,7 @@ async function ensureVoiceChatListening(
     return ok;
   }
 
-  // Hard restart under user gesture — SDK getUserMedia must be the only mic grab.
+  // Hard restart only when INACTIVE / explicitly requested after unmute failed.
   try {
     vc.stop();
   } catch {
@@ -197,12 +209,7 @@ async function ensureVoiceChatListening(
   }
 
   await tryUnmute();
-  // Brief settle — LiveKit sometimes reports muted for one tick after start.
-  for (let i = 0; i < 10 && vc.isMuted && vc.state === "ACTIVE"; i++) {
-    await tryUnmute();
-    await new Promise((r) => window.setTimeout(r, 50));
-  }
-
+  await settleUnmuted();
   startListeningSafe();
   const ok = vc.state === "ACTIVE" && !vc.isMuted;
   debugLog("VOICE_CHAT_LISTENING", {
@@ -599,13 +606,13 @@ export function useLiveAvatarSession() {
 
     try {
       if (!shouldMute) {
-        // Unmute under this click — first await should be voiceChat.start/unmute
-        // (no prior AudioContext / parallel getUserMedia).
-        let ok = await ensureVoiceChatListening(session, {
-          forceRestart:
-            session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted,
-        });
-        if (!ok) {
+        // Under this click: unmute FIRST (LiveKit may reacquire mic via restartTrack).
+        // Only stop+start if still muted — never restart while ACTIVE+muted as step 1.
+        let ok = await ensureVoiceChatListening(session, { forceRestart: false });
+        if (!ok && session.voiceChat.state !== "ACTIVE") {
+          ok = await ensureVoiceChatListening(session, { forceRestart: true });
+        } else if (!ok) {
+          // ACTIVE but still muted after unmute — one hard restart under same gesture chain.
           ok = await ensureVoiceChatListening(session, { forceRestart: true });
         }
         if (!ok) {
@@ -768,14 +775,13 @@ export function useLiveAvatarSession() {
           VoiceChatEvent,
         } = sdk;
 
-        // Courses: keep mic live from session.start (no second getUserMedia).
+        // Courses: start UNMUTED so LiveKit never stopOnMute-kills the track before
+        // the user speaks (Safari cannot reacquire mic without a fresh click).
         // Campaign: start muted until after the scripted intro.
-        // Stay on SDK 0.0.13 — 0.0.19+ waitForRequiredParticipants hung on “Pripravujeme avatara…”.
+        // Stay on SDK 0.0.13 — 0.0.19+ waitForRequiredParticipants hung on “Pripravujeme…”.
         const isCoursesSession = !config.openingText?.trim();
-        // Always start muted in configureSession — createLocalAudioTrack is the same,
-        // but unmuted publish during start has been flaky; courses unmutes after CONNECTED.
         const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: { defaultMuted: true },
+          voiceChat: { defaultMuted: !isCoursesSession },
         });
         const sessionLike = session as unknown as SessionLike;
         sessionRef.current = sessionLike;
@@ -869,18 +875,31 @@ export function useLiveAvatarSession() {
             setPreparingIntro(false);
             setError(null);
             setStatus("ready");
+            // Started with defaultMuted:false — reflect live mic immediately.
+            setMicMuted(sessionLike.voiceChat.isMuted);
+            if (!sessionLike.voiceChat.isMuted) {
+              armMaxDurationTimer();
+            }
             debugLog("COURSES_LIVE", {
               sessionId: gate.sessionId,
               state: sessionLike.voiceChat.state,
               muted: sessionLike.voiceChat.isMuted,
             });
             void (async () => {
-              // Soft unmute from session.start({ defaultMuted: true }).
-              await ensureVoiceChatListening(sessionLike, { forceRestart: false });
-              if (!isCurrentSession()) return;
-              setMicMuted(sessionLike.voiceChat.isMuted);
-              if (!sessionLike.voiceChat.isMuted) {
-                armMaxDurationTimer();
+              // If SDK still muted (edge case), try soft unmute — Zapnúť remains fallback.
+              if (sessionLike.voiceChat.isMuted) {
+                await ensureVoiceChatListening(sessionLike, { forceRestart: false });
+                if (!isCurrentSession()) return;
+                setMicMuted(sessionLike.voiceChat.isMuted);
+                if (!sessionLike.voiceChat.isMuted) {
+                  armMaxDurationTimer();
+                }
+              } else {
+                try {
+                  sessionLike.startListening();
+                } catch {
+                  /* ignore */
+                }
               }
               if (videoRef.current) {
                 await primeAvatarMedia(videoRef.current, () => {
@@ -1202,7 +1221,9 @@ export function useLiveAvatarSession() {
         // If configureSession failed to open the mic, retry once (permission already granted).
         if (sessionLike.voiceChat.state !== "ACTIVE") {
           try {
-            await sessionLike.voiceChat.start({ defaultMuted: true });
+            await sessionLike.voiceChat.start({
+              defaultMuted: !isCoursesSession,
+            });
           } catch (err) {
             debugLog("VOICE_CHAT_RETRY_AFTER_START_FAILED", err);
           }
