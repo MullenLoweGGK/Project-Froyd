@@ -141,6 +141,74 @@ type SessionLike = {
   on: (event: string, cb: (...args: never[]) => void) => void;
 };
 
+/**
+ * Ensure LiveKit mic is ACTIVE + unmuted + agent listening.
+ * Call under a user gesture (Začať / Zapnúť). Soft unmute first; if that
+ * cannot revive a stopped track, recreate voiceChat (with one warm+retry).
+ */
+async function ensureMicLive(session: SessionLike): Promise<boolean> {
+  const vc = session.voiceChat;
+  const listen = () => {
+    try {
+      session.startListening();
+    } catch (err) {
+      debugLog("START_LISTENING_FAILED", err);
+    }
+  };
+
+  if (vc.state === "ACTIVE" && !vc.isMuted) {
+    listen();
+    return true;
+  }
+
+  if (vc.state === "ACTIVE" && vc.isMuted) {
+    try {
+      await vc.unmute();
+    } catch (err) {
+      debugLog("ENSURE_MIC_UNMUTE_FAILED", err);
+    }
+    if (!vc.isMuted) {
+      listen();
+      return true;
+    }
+  }
+
+  try {
+    vc.stop();
+  } catch {
+    /* ignore */
+  }
+
+  const startUnmuted = async () => {
+    await vc.start({ defaultMuted: false });
+  };
+
+  try {
+    await startUnmuted();
+  } catch (err) {
+    debugLog("ENSURE_MIC_START_FAILED", err);
+    // Safari after leave/re-enter: warm permission under this click, then retry.
+    try {
+      await requestMicrophoneAccess();
+      await startUnmuted();
+    } catch (retryErr) {
+      debugLog("ENSURE_MIC_START_RETRY_FAILED", retryErr);
+      return false;
+    }
+  }
+
+  if (vc.state === "ACTIVE" && vc.isMuted) {
+    try {
+      await vc.unmute();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  listen();
+  return vc.state === "ACTIVE" && !vc.isMuted;
+}
+
 type IntroGate = {
   sessionId: string;
   streamReady: boolean;
@@ -523,52 +591,21 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // Unmute under this click. unmute() is a no-op when voiceChat is INACTIVE
-      // (no track) — then recreate the mic track via start({ defaultMuted: false }).
-      if (session.voiceChat.state === "ACTIVE") {
-        try {
-          await session.voiceChat.unmute();
-        } catch (err) {
-          debugLog("MIC_UNMUTE_FAILED", err);
-        }
-      }
-
-      if (session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted) {
-        try {
-          session.voiceChat.stop();
-        } catch {
-          /* ignore */
-        }
-        try {
-          await session.voiceChat.start({ defaultMuted: false });
-        } catch (err) {
-          debugLog("MIC_VOICE_CHAT_START_FAILED", err);
-          setMicMuted(true);
-          setError(
-            lang === "en"
-              ? "Couldn’t turn the microphone on. Click “Zapnúť mikrofón” again and allow access if Safari asks."
-              : "Nepodarilo sa zapnúť mikrofón. Kliknite znova na „Zapnúť mikrofón“ a povoľte prístup, ak Safari vypýta."
-          );
-          return;
-        }
-      }
-
-      try {
-        session.startListening();
-      } catch {
-        /* ignore */
-      }
-
-      if (session.voiceChat.isMuted) {
+      const ok = await ensureMicLive(session);
+      if (!ok) {
         setMicMuted(true);
+        const denied = (await readMicrophonePermissionState()) === "denied";
         setError(
-          lang === "en"
-            ? "Microphone is still muted. Click “Zapnúť mikrofón” again."
-            : "Mikrofón je stále stlmený. Kliknite znova na „Zapnúť mikrofón“."
+          denied
+            ? toHumanError("mic-denied", undefined, lang)
+            : lang === "en"
+              ? "Couldn’t turn the microphone on. Click “Zapnúť mikrofón” again."
+              : "Nepodarilo sa zapnúť mikrofón. Kliknite znova na „Zapnúť mikrofón“."
         );
         return;
       }
 
+      markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
       setMicMuted(false);
       armMaxDurationTimer();
       await preferMediaLoudspeaker(videoRef.current);
@@ -1117,20 +1154,22 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    // Empty intro (courses): same end-state as main after AVATAR_SPEAK_ENDED —
-    // unmute + startListening under this click. Skip mute/intro buffer (those
-    // exist only to stage the scripted opening line).
+    // Empty intro (courses): activate mic under this click (same end-state as
+    // main after AVATAR_SPEAK_ENDED). Recreate track if soft unmute is not enough.
     if (!gate.openingText) {
       gate.conversationActive = true;
-      try {
-        await session.voiceChat.unmute();
-      } catch (err) {
-        debugLog("NO_INTRO_UNMUTE_FAILED", err);
-      }
-      try {
-        session.startListening();
-      } catch (err) {
-        debugLog("NO_INTRO_START_LISTENING_FAILED", err);
+      const micOk = await ensureMicLive(session);
+      if (!micOk) {
+        gate.introStarted = false;
+        setPreparingIntro(false);
+        setMicMuted(true);
+        setError(
+          languageRef.current === "en"
+            ? "Couldn’t turn the microphone on. Click “Začať rozhovor hneď” again."
+            : "Nepodarilo sa zapnúť mikrofón. Kliknite znova na „Začať rozhovor hneď“."
+        );
+        setStatus("awaiting-ready");
+        return false;
       }
 
       await preferMediaLoudspeaker(videoRef.current);
@@ -1154,7 +1193,7 @@ export function useLiveAvatarSession() {
       }
 
       setPreparingIntro(false);
-      setMicMuted(session.voiceChat.isMuted);
+      setMicMuted(false);
       setStatus("ready");
       return true;
     }
