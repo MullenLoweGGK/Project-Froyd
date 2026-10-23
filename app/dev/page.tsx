@@ -203,8 +203,9 @@ export default function DevPage() {
     log("Initialising LiveAvatarSession…");
 
     const session = new LiveAvatarSession(sessionToken, {
-      // voiceChat: true auto-starts the microphone inside session.start()
-      voiceChat: true,
+      // Empty config = mic on unmuted (SDK 0.0.19+). Use { defaultMuted: true } for text-only.
+      voiceChat: {},
+      autoKeepAlive: true,
     });
     sessionRef.current = session;
 
