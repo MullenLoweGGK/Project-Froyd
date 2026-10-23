@@ -83,32 +83,30 @@ export function AvatarModal({
   }, [open, stopSession]);
 
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
-  const isCoursesFlow = !session.openingText;
 
-  // Campaign: auto-start after countdown when mic was granted on "Spustiť".
-  // Courses: ready gate is skipped in the session hook — no timer needed.
+  // After 30s, auto-start only if mic was already granted on "Spustiť".
+  // On iOS, a timer has no user gesture — without prior grant getUserMedia fails
+  // silently (no prompt) and only shows a red error.
   useEffect(() => {
     if (!awaitingReady) {
       readyStartedRef.current = false;
       return;
     }
-    if (isCoursesFlow) return;
     if (!micPermissionGranted) return;
 
     const timer = window.setTimeout(() => {
       if (readyStartedRef.current) return;
       readyStartedRef.current = true;
-      void confirmReady().then((ok) => {
-        if (!ok) readyStartedRef.current = false;
-      });
+      void confirmReady();
     }, READY_COUNTDOWN_MS);
 
     return () => window.clearTimeout(timer);
-  }, [awaitingReady, confirmReady, micPermissionGranted, isCoursesFlow]);
+  }, [awaitingReady, confirmReady, micPermissionGranted]);
 
   if (!open) return null;
 
   const canControlMic = status === "ready" || status === "user-speaking";
+  // Live stream only after disclaimer — during awaiting-ready show static photo.
   const streamVisible =
     status === "ready" ||
     status === "user-speaking" ||
@@ -136,23 +134,11 @@ export function AvatarModal({
   }
 
   async function handleStartNow() {
-    if (preparingIntro) return;
-    // Always allow another attempt after a failed confirm — don't stick the latch.
+    if (readyStartedRef.current || preparingIntro) return;
     readyStartedRef.current = true;
-    try {
-      const ok = await confirmReady();
-      if (!ok) readyStartedRef.current = false;
-    } catch {
-      readyStartedRef.current = false;
-    }
+    const ok = await confirmReady();
+    if (!ok) readyStartedRef.current = false;
   }
-
-  // Courses: one CTA — mic permission is requested on this same click.
-  // Campaign may still show “Allow microphone…” when grant is missing.
-  const readyPrimaryLabel =
-    isCoursesFlow || micPermissionGranted
-      ? copy.startNow
-      : copy.allowMicAndStart;
 
   return (
     <div
@@ -168,9 +154,7 @@ export function AvatarModal({
         aria-label={copy.close}
         onClick={() => void handleClose()}
       />
-      <div
-        className={`ldz-modal__panel${awaitingReady || preparingIntro ? " ldz-modal__panel--ready" : ""}`}
-      >
+      <div className="ldz-modal__panel">
         <div className="ldz-modal__header">
           <div>
             <h2 id={titleId}>
@@ -216,16 +200,17 @@ export function AvatarModal({
               </div>
             )}
             {awaitingReady ? (
-              <div className="ldz-modal__ready-overlay">
+              <div className="ldz-modal__ready-overlay" role="status">
                 <p className="ldz-modal__ready-title">{copy.readyTitle}</p>
                 <p className="ldz-modal__ready-copy">{copy.readyCopy}</p>
                 <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
                   {copy.readyEmphasis}
                 </p>
-                <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
-                  {copy.readyMicHint}
-                </p>
-                {!isCoursesFlow && micPermissionGranted ? (
+                {!micPermissionGranted ? (
+                  <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
+                    {copy.readyMicHint}
+                  </p>
+                ) : (
                   <div
                     className="ldz-modal__ready-progress"
                     aria-hidden="true"
@@ -238,24 +223,7 @@ export function AvatarModal({
                       }}
                     />
                   </div>
-                ) : null}
-                <div className="ldz-modal__ready-actions">
-                  <button
-                    type="button"
-                    className="ldz-btn ldz-btn--secondary"
-                    onClick={() => void handleStartNow()}
-                    disabled={preparingIntro}
-                  >
-                    {readyPrimaryLabel}
-                  </button>
-                  <button
-                    type="button"
-                    className="ldz-btn ldz-btn--danger"
-                    onClick={() => void handleClose()}
-                  >
-                    {copy.end}
-                  </button>
-                </div>
+                )}
               </div>
             ) : null}
             {preparingIntro ? (
@@ -281,7 +249,7 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        {error ? (
+        {error && !(awaitingReady && micPermissionGranted) ? (
           <p className="ldz-modal__error" role="alert">
             {error}
           </p>
@@ -291,50 +259,65 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        {/* Footer controls — hidden during ready gate (CTA lives in the overlay). */}
-        {!awaitingReady && !preparingIntro ? (
-          <div className="ldz-modal__controls">
-            {isIdle ? (
+        <div className="ldz-modal__controls">
+          {isIdle ? (
+            <button
+              type="button"
+              className="ldz-btn ldz-btn--secondary"
+              onClick={() => void handleStart()}
+              disabled={creditsExhausted}
+            >
+              {creditsExhausted
+                ? froydContent.creditLimit.ctaDisabledLabel
+                : copy.start}
+            </button>
+          ) : awaitingReady ? (
+            <>
               <button
                 type="button"
                 className="ldz-btn ldz-btn--secondary"
-                onClick={() => void handleStart()}
-                disabled={creditsExhausted}
+                onClick={() => void handleStartNow()}
+                disabled={preparingIntro}
               >
-                {creditsExhausted
-                  ? froydContent.creditLimit.ctaDisabledLabel
-                  : copy.start}
+                {micPermissionGranted ? copy.startNow : copy.allowMicAndStart}
               </button>
-            ) : canControlMic ? (
-              <>
-                <button
-                  type="button"
-                  className="ldz-btn ldz-btn--primary"
-                  onClick={() => void toggleMic(micMuted ? false : true)}
-                  aria-pressed={micMuted}
-                >
-                  {micMuted ? copy.unmute : copy.mute}
-                </button>
-                <button
-                  type="button"
-                  className="ldz-btn ldz-btn--danger"
-                  onClick={() => void handleClose()}
-                >
-                  {copy.endSession}
-                </button>
-              </>
-            ) : (
               <button
                 type="button"
                 className="ldz-btn ldz-btn--danger"
                 onClick={() => void handleClose()}
-                disabled={status === "stopping"}
+              >
+                {copy.end}
+              </button>
+            </>
+          ) : canControlMic ? (
+            <>
+              <button
+                type="button"
+                className="ldz-btn ldz-btn--primary"
+                onClick={() => void toggleMic()}
+                aria-pressed={micMuted}
+              >
+                {micMuted ? copy.unmute : copy.mute}
+              </button>
+              <button
+                type="button"
+                className="ldz-btn ldz-btn--danger"
+                onClick={() => void handleClose()}
               >
                 {copy.endSession}
               </button>
-            )}
-          </div>
-        ) : null}
+            </>
+          ) : (
+            <button
+              type="button"
+              className="ldz-btn ldz-btn--danger"
+              onClick={() => void handleClose()}
+              disabled={status === "stopping"}
+            >
+              {copy.endSession}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

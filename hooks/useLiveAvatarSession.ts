@@ -25,45 +25,6 @@ async function requestMicrophoneAccess(): Promise<void> {
   stream.getTracks().forEach((t) => t.stop());
 }
 
-/** Open mic under the current user gesture; caller must stop tracks when done. */
-async function acquireMicrophoneStream(): Promise<MediaStream> {
-  return navigator.mediaDevices.getUserMedia({ audio: true });
-}
-
-/** Prefer Permissions API — a second getUserMedia probe often fails spuriously on iOS. */
-async function readMicrophonePermissionState(): Promise<
-  PermissionState | "unknown"
-> {
-  try {
-    const permissions = navigator.permissions;
-    if (!permissions?.query) return "unknown";
-    const status = await permissions.query({
-      name: "microphone" as PermissionName,
-    });
-    return status.state;
-  } catch {
-    return "unknown";
-  }
-}
-
-async function ensureMicrophoneAccess(): Promise<boolean> {
-  const state = await readMicrophonePermissionState();
-  if (state === "granted") return true;
-  if (state === "denied") return false;
-
-  try {
-    await requestMicrophoneAccess();
-    return true;
-  } catch (err) {
-    console.error("[LiveAvatar] mic ensure failed:", micErrorDetail(err));
-    const name = err && typeof err === "object" ? (err as { name?: string }).name : "";
-    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-      return false;
-    }
-    return false;
-  }
-}
-
 function micErrorDetail(err: unknown): string {
   if (!err || typeof err !== "object") return String(err);
   const e = err as { name?: string; message?: string };
@@ -77,16 +38,16 @@ export type LiveAvatarConfig = {
   language?: string;
   /**
    * Manual opening line via session.repeat() after CONNECTED + STREAM_READY.
-   * Omit on courses — participant speaks first.
+   * Disable / clear HeyGen Context OpeningText so the avatar does not speak twice.
    */
   openingText?: string;
-  /** Hard stop after this many user turns. Omit / undefined = no limit. */
+  /** Hard stop after this many user turns (default 4). */
   questionLimit?: number;
   /** Forced line spoken via session.repeat() when the limit is hit. */
   questionLimitMessage?: string;
   /** Spoken on every further user turn after the limit (5th+). */
   questionLimitFollowupMessage?: string;
-  /** Talk clock after first mic unmute (ms). Default 120s. */
+  /** Talk clock after first mic unmute (ms). Default 120s. Courses: 10 min. */
   maxSessionMs?: number;
 };
 
@@ -108,118 +69,15 @@ type SessionLike = {
   /** SDK: LiveAvatarSession.repeat(message: string): string (event id) */
   repeat: (message: string) => string;
   interrupt: () => void;
-  /** FULL mode: switch agent from idle → listening so user speech is processed */
-  startListening: () => string;
   stopListening: () => string;
-  keepAlive?: () => Promise<void>;
   voiceChat: {
     isMuted: boolean;
-    /** INACTIVE | STARTING | ACTIVE — unmute is a no-op while INACTIVE */
-    state: string;
-    start: (config?: { defaultMuted?: boolean }) => Promise<void>;
-    stop: () => void;
     mute: () => Promise<void>;
     unmute: () => Promise<void>;
     on: (event: string, cb: (...args: never[]) => void) => void;
   };
   on: (event: string, cb: (...args: never[]) => void) => void;
 };
-
-/**
- * Make voice chat ACTIVE + unmuted and tell the agent to listen.
- *
- * Safari / LiveKit notes:
- * - Do NOT open a parallel getUserMedia() before voiceChat.start().
- * - After mute(), LiveKit often stop()s the mic track (stopOnMute). unmute() then
- *   calls restartTrack()/getUserMedia — that MUST be the first await under a click.
- * - Prefer unmute() over stop()+start() when already ACTIVE; stop+start races Safari.
- */
-async function ensureVoiceChatListening(
-  session: SessionLike,
-  opts: { forceRestart?: boolean } = {}
-): Promise<boolean> {
-  const vc = session.voiceChat;
-  const startListeningSafe = () => {
-    try {
-      session.startListening();
-    } catch (err) {
-      debugLog("START_LISTENING_FAILED", err);
-    }
-  };
-
-  const tryUnmute = async () => {
-    if (vc.state !== "ACTIVE") return;
-    if (!vc.isMuted) return;
-    try {
-      await vc.unmute();
-    } catch (err) {
-      debugLog("VOICE_CHAT_UNMUTE_FAILED", err);
-    }
-  };
-
-  const settleUnmuted = async () => {
-    for (let i = 0; i < 12 && vc.state === "ACTIVE" && vc.isMuted; i++) {
-      await tryUnmute();
-      await new Promise((r) => window.setTimeout(r, 40));
-    }
-  };
-
-  // Already live — unmute under this call stack (user gesture when from Zapnúť).
-  if (vc.state === "ACTIVE" && !opts.forceRestart) {
-    await tryUnmute();
-    await settleUnmuted();
-    startListeningSafe();
-    const ok = vc.state === "ACTIVE" && !vc.isMuted;
-    debugLog("VOICE_CHAT_LISTENING", { ok, path: "unmute", muted: vc.isMuted });
-    return ok;
-  }
-
-  if (!opts.forceRestart && vc.state !== "ACTIVE") {
-    try {
-      await vc.start({ defaultMuted: false });
-    } catch (err) {
-      debugLog("VOICE_CHAT_START_FAILED", err);
-    }
-    await tryUnmute();
-    await settleUnmuted();
-    startListeningSafe();
-    const ok = vc.state === "ACTIVE" && !vc.isMuted;
-    debugLog("VOICE_CHAT_LISTENING", {
-      ok,
-      path: "soft-start",
-      state: vc.state,
-      muted: vc.isMuted,
-    });
-    return ok;
-  }
-
-  // Hard restart only when INACTIVE / explicitly requested after unmute failed.
-  try {
-    vc.stop();
-  } catch {
-    /* already stopped */
-  }
-
-  try {
-    await vc.start({ defaultMuted: false });
-  } catch (err) {
-    debugLog("VOICE_CHAT_RESTART_FAILED", err);
-    startListeningSafe();
-    return false;
-  }
-
-  await tryUnmute();
-  await settleUnmuted();
-  startListeningSafe();
-  const ok = vc.state === "ACTIVE" && !vc.isMuted;
-  debugLog("VOICE_CHAT_LISTENING", {
-    ok,
-    path: "restart",
-    state: vc.state,
-    muted: vc.isMuted,
-  });
-  return ok;
-}
 
 type IntroGate = {
   sessionId: string;
@@ -264,33 +122,16 @@ function toHumanError(
       return en
         ? "This scenario isn’t ready yet. Please try another avatar."
         : "Tento scenár ešte nie je pripravený. Skúste prosím iný avatar.";
-    case "session-failed": {
-      // LiveAvatar platform outage (HTML 502/503) — not a local env misconfig.
-      if (
-        technical &&
-        /upstream|503|502|Service Temporarily Unavailable|Non-JSON response/i.test(
-          technical
-        )
-      ) {
-        return en
-          ? "HeyGen LiveAvatar is temporarily unavailable. Please try again in a few minutes."
-          : "HeyGen LiveAvatar je dočasne nedostupný. Skúste to znova o pár minút.";
-      }
-      if (technical && /LIVEAVATAR_API_KEY is not configured/i.test(technical)) {
-        return en
-          ? "Couldn’t start the conversation — server is missing LIVEAVATAR_API_KEY on this Vercel project (Production)."
-          : "Nepodarilo sa spustiť rozhovor — na tomto Vercel projekte chýba LIVEAVATAR_API_KEY (Production).";
-      }
+    case "session-failed":
       return en
         ? "Couldn’t start the conversation. Please try again in a moment."
         : "Nepodarilo sa spustiť rozhovor. Skúste to znova o chvíľu.";
-    }
     case "credit-limit":
       return froydContent.creditLimit.message;
     case "mic-denied":
       return en
-        ? "Microphone is blocked for this site. In Safari: Safari → Settings for This Website → Microphone → Allow, then click “Start conversation” again. (If no dialog appears, it was blocked earlier — change it in those settings.)"
-        : "Mikrofón je pre tento web zablokovaný. V Safari: Safari → Nastavenia pre tento web → Mikrofón → Povoliť, potom znova „Začať rozhovor“. (Ak dialóg nevyskočí, bol skôr zamietnutý — zmeňte to v týchto nastaveniach.)";
+        ? "We need microphone access so you can talk to the avatar. Allow the mic in your browser / iPhone settings (Settings → Safari → Microphone) and try again."
+        : "Potrebujeme prístup k mikrofónu, aby ste mohli hovoriť s avatárom. Povoľte mikrofón v nastaveniach prehliadača / iPhonu (Nastavenia → Safari → Mikrofón) a skúste znova.";
     case "connection":
       return en
         ? "Connection failed. Check your internet and try again."
@@ -434,18 +275,15 @@ export function useLiveAvatarSession() {
   const sessionRef = useRef<SessionLike | null>(null);
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 120s talk clock starts on first mic unmute after intro — not on CONNECTED. */
+  /** Talk clock starts on first mic unmute after intro — not on CONNECTED. */
   const maxDurationArmedRef = useRef(false);
+  const maxSessionMsRef = useRef(DEFAULT_MAX_SESSION_MS);
   const introTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const introGateRef = useRef<IntroGate | null>(null);
   /** iOS only shows the mic prompt during a user gesture — grant on "Spustiť". */
   const micPermissionGrantedRef = useRef(false);
   /** Session UI language for human-readable errors (sk | en). */
   const languageRef = useRef("sk");
-  /** Per-session talk clock (armed on first unmute). */
-  const maxSessionMsRef = useRef(DEFAULT_MAX_SESSION_MS);
-  /** Clears LiveAvatar keep-alive interval for the active session. */
-  const keepAliveClearRef = useRef<(() => void) | null>(null);
 
   const [status, setStatus] = useState<AppStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -517,8 +355,6 @@ export function useLiveAvatarSession() {
   );
 
   const stopSession = useCallback(async () => {
-    keepAliveClearRef.current?.();
-    keepAliveClearRef.current = null;
     clearMaxDurationTimer();
     maxDurationArmedRef.current = false;
     resetIntroGate();
@@ -554,7 +390,7 @@ export function useLiveAvatarSession() {
     setStatus("stopped");
   }, [clearMaxDurationTimer, resetIntroGate, saveTranscript]);
 
-  /** Starts the 120s talk clock once — first mic unmute after the intro. */
+  /** Starts the talk clock once — first mic unmute after the intro / ready confirm. */
   const armMaxDurationTimer = useCallback(() => {
     if (maxDurationArmedRef.current) return;
     maxDurationArmedRef.current = true;
@@ -575,85 +411,26 @@ export function useLiveAvatarSession() {
     }, maxMs);
   }, [clearMaxDurationTimer, stopSession]);
 
-  /**
-   * @param wantMuted — explicit intent from the button label. Avoids desync where
-   * UI says “Zapnúť mikrofón” but voiceChat.isMuted is already false (mute again).
-   */
-  const toggleMic = useCallback(async (wantMuted?: boolean) => {
+  const toggleMic = useCallback(async () => {
     const session = sessionRef.current;
-    const lang = languageRef.current;
-    if (!session) {
-      setError(
-        lang === "en"
-          ? "Session ended. Start the conversation again."
-          : "Relácia skončila. Spustite rozhovor znova."
-      );
-      return;
-    }
+    if (!session) return;
     // Keep mic muted while the scripted intro is speaking / after question limit.
     if (introGateRef.current?.introInProgress) return;
     if (introGateRef.current?.forceClosing || introGateRef.current?.closingSpeakPending) {
       return;
     }
-    if (introGateRef.current?.questionLimitReached) return;
-
-    const shouldMute =
-      typeof wantMuted === "boolean"
-        ? wantMuted
-        : !(session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted);
-
-    setError(null);
-
     try {
-      if (!shouldMute) {
-        // Under this click: unmute FIRST (LiveKit may reacquire mic via restartTrack).
-        // Only stop+start if still muted — never restart while ACTIVE+muted as step 1.
-        let ok = await ensureVoiceChatListening(session, { forceRestart: false });
-        if (!ok && session.voiceChat.state !== "ACTIVE") {
-          ok = await ensureVoiceChatListening(session, { forceRestart: true });
-        } else if (!ok) {
-          // ACTIVE but still muted after unmute — one hard restart under same gesture chain.
-          ok = await ensureVoiceChatListening(session, { forceRestart: true });
-        }
-        if (!ok) {
-          setMicMuted(true);
-          const denied = await readMicrophonePermissionState();
-          setError(
-            denied === "denied"
-              ? lang === "en"
-                ? "Microphone is blocked for this site. Safari → Settings for This Website → Microphone → Allow."
-                : "Mikrofón je pre tento web zablokovaný. Safari → Nastavenia pre tento web → Mikrofón → Povoliť."
-              : lang === "en"
-                ? "Couldn’t enable the microphone for the avatar. Click “Zapnúť mikrofón” again."
-                : "Nepodarilo sa zapnúť mikrofón pre avatara. Kliknite znova na „Zapnúť mikrofón“."
-          );
-          return;
-        }
-        setMicMuted(false);
-        try {
-          session.startListening();
-        } catch {
-          /* ignore */
-        }
-        armMaxDurationTimer();
-        await preferMediaLoudspeaker(videoRef.current);
-        return;
-      }
-
-      if (session.voiceChat.state === "ACTIVE") {
+      if (session.voiceChat.isMuted) {
+        await session.voiceChat.unmute();
+      } else {
         await session.voiceChat.mute();
       }
-      setMicMuted(true);
     } catch (err) {
-      debugLog("MIC_TOGGLE_FAILED", err);
-      setMicMuted(true);
-      setError(
-        lang === "en"
-          ? "Microphone action failed. Try again."
-          : "Akcia s mikrofónom zlyhala. Skúste znova."
-      );
+      if (process.env.NODE_ENV === "development") {
+        console.error("[LiveAvatar] mic toggle failed", err);
+      }
     }
-  }, [armMaxDurationTimer]);
+  }, []);
 
   const startSession = useCallback(
     async (config: LiveAvatarConfig) => {
@@ -675,9 +452,8 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // Grant mic under “Spustiť”, then RELEASE it before session.start().
-      // Holding a parallel getUserMedia while the SDK calls createLocalAudioTrack
-      // breaks Safari (muted / dead LiveKit mic — “Zapnúť mikrofón” appears broken).
+      // iOS Safari: request mic on the tap that starts the session (user gesture).
+      // Never block session create if this fails — user can grant on "Začať rozhovor hneď".
       try {
         await requestMicrophoneAccess();
         micPermissionGrantedRef.current = true;
@@ -685,7 +461,7 @@ export function useLiveAvatarSession() {
       } catch (err) {
         micPermissionGrantedRef.current = false;
         setMicPermissionGranted(false);
-        console.error("[LiveAvatar] mic grant on start:", micErrorDetail(err));
+        console.error("[LiveAvatar] mic permission on start:", micErrorDetail(err));
       }
 
       try {
@@ -734,12 +510,8 @@ export function useLiveAvatarSession() {
             setStatus("error");
             return;
           }
-          const code = (body as { code?: string }).code;
-          const detail = (body as { detail?: string }).detail;
           throw new Error(
-            [code, (body as { error?: string }).error, detail]
-              .filter(Boolean)
-              .join(": ") || `Backend returned HTTP ${res.status}`
+            (body as { error?: string }).error ?? `Backend returned HTTP ${res.status}`
           );
         }
 
@@ -755,15 +527,6 @@ export function useLiveAvatarSession() {
 
       setStatus("connecting");
 
-      // DOM timer id (number). Node's @types can widen setInterval to Timeout.
-      let keepAliveId: number | null = null;
-      const clearKeepAlive = () => {
-        if (keepAliveId != null) {
-          window.clearInterval(keepAliveId);
-          keepAliveId = null;
-        }
-      };
-
       try {
         const sdk = await import("@heygen/liveavatar-web-sdk");
         const {
@@ -775,22 +538,11 @@ export function useLiveAvatarSession() {
           VoiceChatEvent,
         } = sdk;
 
-        // Courses: start UNMUTED so LiveKit never stopOnMute-kills the track before
-        // the user speaks (Safari cannot reacquire mic without a fresh click).
-        // Campaign: start muted until after the scripted intro.
-        // Stay on SDK 0.0.13 — 0.0.19+ waitForRequiredParticipants hung on “Pripravujeme…”.
-        const isCoursesSession = !config.openingText?.trim();
         const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: { defaultMuted: !isCoursesSession },
+          voiceChat: true,
         });
         const sessionLike = session as unknown as SessionLike;
         sessionRef.current = sessionLike;
-
-        // Manual keep-alive (autoKeepAlive only exists in newer SDK versions).
-        keepAliveId = window.setInterval(() => {
-          void sessionLike.keepAlive?.().catch(() => null);
-        }, 60_000) as unknown as number;
-        keepAliveClearRef.current = clearKeepAlive;
 
         // Per-session intro gate — identity is this object + sessionId.
         const gate: IntroGate = {
@@ -802,7 +554,7 @@ export function useLiveAvatarSession() {
           introInProgress: false,
           conversationActive: false,
           userTurnCount: 0,
-          // Infinity = no hard question limit (courses site).
+          // Omit / non-positive = no hard question limit (courses).
           questionLimit:
             typeof config.questionLimit === "number" && config.questionLimit > 0
               ? Math.max(1, config.questionLimit)
@@ -845,76 +597,7 @@ export function useLiveAvatarSession() {
           }
 
           gate.readyPromptShown = true;
-          debugLog("READY_GATE", {
-            sessionId: gate.sessionId,
-            courses: isCoursesSession,
-            voiceState: sessionLike.voiceChat.state,
-            muted: sessionLike.voiceChat.isMuted,
-          });
-
-          if (videoRef.current) {
-            try {
-              sessionLike.attach(videoRef.current);
-            } catch {
-              /* stream may not be fully ready yet */
-            }
-            try {
-              await videoRef.current.play();
-            } catch {
-              /* autoplay may wait for gesture */
-            }
-          }
-
-          if (!isCurrentSession()) return;
-
-          // Courses: skip the ready-gate click loop — show live UI immediately,
-          // finish mic/audio in the background so we never stick on “Pripravujeme…”.
-          if (isCoursesSession) {
-            gate.introStarted = true;
-            gate.conversationActive = true;
-            setPreparingIntro(false);
-            setError(null);
-            setStatus("ready");
-            // Started with defaultMuted:false — reflect live mic immediately.
-            setMicMuted(sessionLike.voiceChat.isMuted);
-            if (!sessionLike.voiceChat.isMuted) {
-              armMaxDurationTimer();
-            }
-            debugLog("COURSES_LIVE", {
-              sessionId: gate.sessionId,
-              state: sessionLike.voiceChat.state,
-              muted: sessionLike.voiceChat.isMuted,
-            });
-            void (async () => {
-              // If SDK still muted (edge case), try soft unmute — Zapnúť remains fallback.
-              if (sessionLike.voiceChat.isMuted) {
-                await ensureVoiceChatListening(sessionLike, { forceRestart: false });
-                if (!isCurrentSession()) return;
-                setMicMuted(sessionLike.voiceChat.isMuted);
-                if (!sessionLike.voiceChat.isMuted) {
-                  armMaxDurationTimer();
-                }
-              } else {
-                try {
-                  sessionLike.startListening();
-                } catch {
-                  /* ignore */
-                }
-              }
-              if (videoRef.current) {
-                await primeAvatarMedia(videoRef.current, () => {
-                  try {
-                    sessionLike.attach(videoRef.current as HTMLVideoElement);
-                  } catch {
-                    /* ignore */
-                  }
-                });
-              }
-              await preferMediaLoudspeaker(videoRef.current);
-              await unlockBrowserAudio();
-            })();
-            return;
-          }
+          debugLog("READY_GATE", { sessionId: gate.sessionId });
 
           try {
             await sessionLike.voiceChat.mute();
@@ -922,6 +605,15 @@ export function useLiveAvatarSession() {
             debugLog("READY_GATE_MUTE_FAILED", err);
           }
 
+          if (videoRef.current) {
+            try {
+              await videoRef.current.play();
+            } catch {
+              /* autoplay may wait for the confirm click */
+            }
+          }
+
+          if (!isCurrentSession()) return;
           setError(null);
           setStatus("awaiting-ready");
         };
@@ -939,29 +631,9 @@ export function useLiveAvatarSession() {
             debugLog("SESSION_CONNECTED", { sessionId });
             gate.sessionConnected = true;
             void maybeEnterReadyGate();
-            // SDK only emits STREAM_READY when BOTH remote A/V tracks exist.
-            // If audio is late/missing, we'd stay on “Pripravujeme avatara…” forever.
-            // 2–3s multimodal race mitigation: proceed without the audio track.
-            window.setTimeout(() => {
-              if (!isCurrentSession() || gate.readyPromptShown) return;
-              if (!gate.streamReady) {
-                debugLog("STREAM_READY_FALLBACK", { sessionId });
-                gate.streamReady = true;
-                if (videoRef.current) {
-                  try {
-                    sessionLike.attach(videoRef.current);
-                    void videoRef.current.play().catch(() => null);
-                  } catch {
-                    /* ignore */
-                  }
-                }
-                void maybeEnterReadyGate();
-              }
-            }, 2_500);
           }
           if (state === SessionState.DISCONNECTING) setStatus("stopping");
           if (state === SessionState.DISCONNECTED) {
-            clearKeepAlive();
             clearMaxDurationTimer();
             resetIntroGate();
             setStatus("disconnected");
@@ -984,7 +656,6 @@ export function useLiveAvatarSession() {
 
         session.on(SessionEvent.SESSION_DISCONNECTED, (reason) => {
           debugLog("SESSION_DISCONNECTED", { sessionId, reason });
-          clearKeepAlive();
           clearMaxDurationTimer();
           resetIntroGate();
           if (reason !== SessionDisconnectReason.CLIENT_INITIATED) {
@@ -998,14 +669,10 @@ export function useLiveAvatarSession() {
 
         const activateConversation = async () => {
           gate.conversationActive = true;
-          const listening = await ensureVoiceChatListening(sessionLike, {
-            forceRestart: false,
-          });
-          if (!listening) {
-            debugLog("CONVERSATION_UNMUTE_FAILED", {
-              state: sessionLike.voiceChat.state,
-              muted: sessionLike.voiceChat.isMuted,
-            });
+          try {
+            await sessionLike.voiceChat.unmute();
+          } catch (err) {
+            debugLog("CONVERSATION_UNMUTE_FAILED", err);
           }
           // Mic unmute can flip Android into call/earpiece mode — re-assert media speaker.
           await preferMediaLoudspeaker(videoRef.current);
@@ -1093,19 +760,12 @@ export function useLiveAvatarSession() {
             limit: gate.questionLimit,
           });
 
-          if (
-            Number.isFinite(gate.questionLimit) &&
-            gate.userTurnCount === gate.questionLimit &&
-            gate.questionLimitMessage
-          ) {
+          if (gate.userTurnCount === gate.questionLimit && gate.questionLimitMessage) {
             void speakForcedLimitLine(gate.questionLimitMessage);
             return;
           }
 
-          if (
-            Number.isFinite(gate.questionLimit) &&
-            gate.userTurnCount > gate.questionLimit
-          ) {
+          if (gate.userTurnCount > gate.questionLimit) {
             const followup =
               gate.questionLimitFollowupMessage || gate.questionLimitMessage;
             if (followup) {
@@ -1192,7 +852,6 @@ export function useLiveAvatarSession() {
         });
 
         session.on(AgentEventsEnum.SESSION_STOPPED, () => {
-          clearKeepAlive();
           clearMaxDurationTimer();
           resetIntroGate();
           setStatus("stopped");
@@ -1201,62 +860,10 @@ export function useLiveAvatarSession() {
           }
         });
 
-        // Connection safety net only (LiveKit/HeyGen handshake). Not the short
-        // multimodal race mitigations elsewhere — those stay in the 2–3s range.
-        const START_TIMEOUT_MS = 15_000;
-        await Promise.race([
-          session.start(),
-          new Promise<never>((_, reject) => {
-            window.setTimeout(() => {
-              reject(
-                new Error(
-                  languageRef.current === "en"
-                    ? "Timed out connecting to the avatar (15s)."
-                    : "Vypršal čas pripojenia k avatarovi (15 s)."
-                )
-              );
-            }, START_TIMEOUT_MS);
-          }),
-        ]);
-        // If configureSession failed to open the mic, retry once (permission already granted).
-        if (sessionLike.voiceChat.state !== "ACTIVE") {
-          try {
-            await sessionLike.voiceChat.start({
-              defaultMuted: !isCoursesSession,
-            });
-          } catch (err) {
-            debugLog("VOICE_CHAT_RETRY_AFTER_START_FAILED", err);
-          }
-        }
-        // session.start() resolved = CONNECTED; ensure we don't miss the event.
-        gate.sessionConnected = true;
-        if (!gate.streamReady) {
-          // Give remote A/V tracks a brief moment, then the CONNECTED fallback runs.
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 2_500);
-          });
-          if (!gate.streamReady) {
-            debugLog("STREAM_READY_FALLBACK_AFTER_START", { sessionId });
-            gate.streamReady = true;
-          }
-        }
-        void maybeEnterReadyGate();
-        debugLog("VOICE_CHAT_AFTER_START", {
-          sessionId,
-          state: sessionLike.voiceChat.state,
-          muted: sessionLike.voiceChat.isMuted,
-          streamReady: gate.streamReady,
-          readyShown: gate.readyPromptShown,
-        });
+        await session.start();
       } catch (err) {
-        clearKeepAlive();
         clearMaxDurationTimer();
         resetIntroGate();
-        try {
-          sessionRef.current?.stop?.();
-        } catch {
-          /* ignore */
-        }
         const msg = String(err);
         // HeyGen often returns a generic "Errors validating session token";
         // surface a clearer public message when the cause is identifiable.
@@ -1264,7 +871,7 @@ export function useLiveAvatarSession() {
           ? "mic-denied"
           : /Voice not found|voice_id/i.test(msg)
             ? "missing-config"
-            : /timeout|Timed out|network|fetch|connect|Vypršal/i.test(msg)
+            : /timeout|network|fetch|connect/i.test(msg)
               ? "connection"
               : "stream";
         const human =
@@ -1292,47 +899,23 @@ export function useLiveAvatarSession() {
   );
 
   /**
-   * After disclaimer / "start now": unlock audio, prime media, then either
-   * speak openingText or (courses) open mic + unmute under the same click.
+   * After disclaimer countdown / "start now": unlock audio, prime media,
+   * then speak openingText (no warm-up utterance).
    */
   const confirmReady = useCallback(async (): Promise<boolean> => {
     const gate = introGateRef.current;
     const session = sessionRef.current;
-    const lang = languageRef.current;
-
-    if (!gate || !session) {
-      setError(
-        lang === "en"
-          ? "The connection dropped. Close this window and start the conversation again."
-          : "Spojenie sa prerušilo. Zavrite okno a spustite rozhovor znova."
-      );
-      setStatus("error");
-      return false;
-    }
-    if (!gate.streamReady || !gate.sessionConnected) {
-      setError(
-        lang === "en"
-          ? "The avatar is still connecting. Wait a second, then click Start conversation again."
-          : "Avatar sa ešte pripája. Počkajte chvíľu a znova kliknite na Začať rozhovor."
-      );
-      setStatus("awaiting-ready");
-      return false;
-    }
-    // Allow retry after a failed confirm (introStarted may have been left true).
-    if (gate.introStarted) {
-      gate.introStarted = false;
-    }
+    if (!gate || !session) return false;
+    if (!gate.streamReady || !gate.sessionConnected) return false;
+    if (gate.introStarted) return false;
 
     gate.introStarted = true;
     setPreparingIntro(true);
     setError(null);
-    debugLog("USER_READY_CONFIRMED", {
-      sessionId: gate.sessionId,
-      hasOpening: Boolean(gate.openingText),
-    });
+    debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // Mic: only prompt if Spustiť didn’t already grant. A second getUserMedia on
-    // Safari/iOS often fails spuriously — and MUST be the first await under the click.
+    // If mic was already granted on "Spustiť", do not call getUserMedia again —
+    // a second probe on iOS often fails spuriously and only shows a redundant error.
     if (!micPermissionGrantedRef.current) {
       try {
         await requestMicrophoneAccess();
@@ -1342,7 +925,7 @@ export function useLiveAvatarSession() {
         console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
         gate.introStarted = false;
         setPreparingIntro(false);
-        setError(toHumanError("mic-denied", micErrorDetail(err), lang));
+        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
         setStatus("awaiting-ready");
         return false;
       }
@@ -1350,40 +933,25 @@ export function useLiveAvatarSession() {
       setMicPermissionGranted(true);
     }
 
-    if (introGateRef.current !== gate || sessionRef.current !== session) {
-      setPreparingIntro(false);
-      return false;
-    }
-
-    // ── Courses fallback (ready gate skipped in normal flow) ──
-    if (!gate.openingText) {
-      await ensureVoiceChatListening(session, { forceRestart: true });
-      if (videoRef.current) {
-        await primeAvatarMedia(videoRef.current, () => {
-          try {
-            session.attach(videoRef.current as HTMLVideoElement);
-          } catch {
-            /* ignore */
-          }
-        });
-      }
-      await preferMediaLoudspeaker(videoRef.current);
-      await unlockBrowserAudio();
-      gate.conversationActive = true;
-      setPreparingIntro(false);
-      setError(null);
-      setMicMuted(session.voiceChat.isMuted);
-      setStatus("ready");
-      return true;
-    }
-
-    // ── Campaign path (scripted intro) ──
     setError(null);
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
+
+    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
+
+    if (videoRef.current) {
+      await primeAvatarMedia(videoRef.current, () => {
+        try {
+          session.attach(videoRef.current as HTMLVideoElement);
+        } catch {
+          /* ignore */
+        }
+      });
+      await preferMediaLoudspeaker(videoRef.current);
+    }
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
@@ -1407,36 +975,53 @@ export function useLiveAvatarSession() {
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
     if (videoRef.current) {
-      await primeAvatarMedia(videoRef.current, () => {
-        try {
-          session.attach(videoRef.current as HTMLVideoElement);
-        } catch {
-          /* ignore */
-        }
-      });
-      await preferMediaLoudspeaker(videoRef.current);
+      videoRef.current.muted = false;
+      videoRef.current.defaultMuted = false;
+      videoRef.current.volume = 1;
+      try {
+        session.attach(videoRef.current);
+      } catch {
+        /* ignore */
+      }
+      try {
+        await videoRef.current.play();
+      } catch {
+        /* ignore */
+      }
     }
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    gate.introInProgress = true;
-    setPreparingIntro(false);
-    debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
-    setStatus("avatar-speaking");
+    if (gate.openingText) {
+      gate.introInProgress = true;
+      setPreparingIntro(false);
+      debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
+      setStatus("avatar-speaking");
 
-    try {
-      session.repeat(gate.openingText);
-    } catch (err) {
-      gate.introInProgress = false;
-      debugLog("INTRO_REPEAT_FAILED", err);
-      gate.conversationActive = true;
       try {
-        await session.voiceChat.unmute();
-      } catch {
-        /* ignore */
+        session.repeat(gate.openingText);
+      } catch (err) {
+        gate.introInProgress = false;
+        debugLog("INTRO_REPEAT_FAILED", err);
+        gate.conversationActive = true;
+        try {
+          await session.voiceChat.unmute();
+        } catch {
+          /* ignore */
+        }
+        setStatus("ready");
       }
-      setStatus("ready");
+      return true;
     }
+
+    setPreparingIntro(false);
+    gate.conversationActive = true;
+    try {
+      await session.voiceChat.unmute();
+    } catch {
+      /* ignore */
+    }
+    setStatus("ready");
     return true;
   }, []);
 
