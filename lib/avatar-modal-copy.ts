@@ -29,12 +29,11 @@ const sk: ModalCopy = {
   title: (nameInstrumental) => `Rozhovor s ${nameInstrumental}`,
   close: "Zavrieť",
   closeAria: "Zavrieť rozhovor",
-  idleHint: "Po štarte sa prihovorte ako prví. Maximálny čas je 10 minút.",
+  idleHint: "Maximálny čas rozhovoru je 10 minút.",
   readyTitle: "Predtým než začnete",
   readyCopy:
-    "Nastavte si hlasitosť zariadenia. Po štarte sa prihovorte vy — avatar sa sám nepredstaví.",
-  readyEmphasis:
-    "Počkajte, kým avatar dohovorí, a až potom pokračujte.",
+    "Nastavte si hlasitosť. Po štarte avatar krátko pozdraví — potom sa prihovorte vy.",
+  readyEmphasis: "Počkajte, kým dohovorí, a až potom pokračujte.",
   readyMicHint:
     "Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás prehliadač vyzve.",
   preparingTitle: "Pripravujeme zvuk…",
@@ -80,11 +79,11 @@ const en: ModalCopy = {
   title: (_nameInstrumental, name) => `Conversation with ${name}`,
   close: "Close",
   closeAria: "Close conversation",
-  idleHint: "After start, you speak first. Maximum time is 10 minutes.",
+  idleHint: "Maximum conversation time is 10 minutes.",
   readyTitle: "Before you start",
   readyCopy:
-    "Set your device volume. After start, you speak first — the avatar will not introduce themselves.",
-  readyEmphasis: "Wait until the avatar finishes before continuing.",
+    "Set your volume. After start the avatar says a short hello — then you speak.",
+  readyEmphasis: "Wait until they finish before continuing.",
   readyMicHint:
     "Tap “Start conversation now” and allow the microphone when the browser asks.",
   preparingTitle: "Preparing audio…",

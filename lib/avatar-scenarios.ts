@@ -72,6 +72,13 @@ export type AvatarScenario = {
 export const COURSE_MAX_SESSION_MS = 600_000;
 
 /**
+ * Minimal spoken line so we keep the proven main flow:
+ * ready gate → repeat(opening) → AVATAR_SPEAK_ENDED → unmute.
+ * Empty intro skipped that path and broke Safari mic activation.
+ */
+export const COURSE_OPENING_TEXT = "Ahoj";
+
+/**
  * Scenario configuration for the PPDZ courses microsite (branch: courses).
  *
  * Env naming (avatar / context / voice per person):
@@ -133,6 +140,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(peterAvatarId),
     label: "AI simulácia",
+    openingText: COURSE_OPENING_TEXT,
     maxSessionMs: COURSE_MAX_SESSION_MS,
   },
   {
@@ -155,6 +163,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(tomasAvatarId),
     label: "AI simulácia",
+    openingText: COURSE_OPENING_TEXT,
     maxSessionMs: COURSE_MAX_SESSION_MS,
   },
   {
@@ -177,6 +186,7 @@ export const AVATAR_SCENARIOS: AvatarScenario[] = [
     aspect: "9:16",
     available: Boolean(evaAvatarId),
     label: "AI simulácia",
+    openingText: COURSE_OPENING_TEXT,
     maxSessionMs: COURSE_MAX_SESSION_MS,
   },
 ];

@@ -83,29 +83,25 @@ export function AvatarModal({
   }, [open, stopSession]);
 
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
-  const isCoursesFlow = !session.openingText;
 
-  // Campaign only: auto-start after countdown when mic was granted on "Spustiť".
-  // Courses (empty intro) must NOT auto-fire confirmReady — a timer has no user
-  // gesture, Safari mic start fails, and the progress bar just restarts forever.
+  // After 30s, auto-start only if mic was already granted on "Spustiť".
+  // On iOS, a timer has no user gesture — without prior grant getUserMedia fails
+  // silently (no prompt) and only shows a red error.
   useEffect(() => {
     if (!awaitingReady) {
       readyStartedRef.current = false;
       return;
     }
-    if (isCoursesFlow) return;
     if (!micPermissionGranted) return;
 
     const timer = window.setTimeout(() => {
       if (readyStartedRef.current) return;
       readyStartedRef.current = true;
-      void confirmReady().then((ok) => {
-        if (!ok) readyStartedRef.current = false;
-      });
+      void confirmReady();
     }, READY_COUNTDOWN_MS);
 
     return () => window.clearTimeout(timer);
-  }, [awaitingReady, confirmReady, micPermissionGranted, isCoursesFlow]);
+  }, [awaitingReady, confirmReady, micPermissionGranted]);
 
   if (!open) return null;
 
@@ -138,14 +134,10 @@ export function AvatarModal({
   }
 
   async function handleStartNow() {
-    if (preparingIntro) return;
+    if (readyStartedRef.current || preparingIntro) return;
     readyStartedRef.current = true;
-    try {
-      const ok = await confirmReady();
-      if (!ok) readyStartedRef.current = false;
-    } catch {
-      readyStartedRef.current = false;
-    }
+    const ok = await confirmReady();
+    if (!ok) readyStartedRef.current = false;
   }
 
   return (
@@ -218,7 +210,7 @@ export function AvatarModal({
                   <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
                     {copy.readyMicHint}
                   </p>
-                ) : !isCoursesFlow ? (
+                ) : (
                   <div
                     className="ldz-modal__ready-progress"
                     aria-hidden="true"
@@ -231,10 +223,6 @@ export function AvatarModal({
                       }}
                     />
                   </div>
-                ) : (
-                  <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
-                    {copy.readyMicHint}
-                  </p>
                 )}
               </div>
             ) : null}
@@ -261,7 +249,7 @@ export function AvatarModal({
           </p>
         ) : null}
 
-        {error ? (
+        {error && !(awaitingReady && micPermissionGranted) ? (
           <p className="ldz-modal__error" role="alert">
             {error}
           </p>
@@ -306,7 +294,7 @@ export function AvatarModal({
               <button
                 type="button"
                 className="ldz-btn ldz-btn--primary"
-                onClick={() => void toggleMic(micMuted ? false : true)}
+                onClick={() => void toggleMic()}
                 aria-pressed={micMuted}
               >
                 {micMuted ? copy.unmute : copy.mute}
