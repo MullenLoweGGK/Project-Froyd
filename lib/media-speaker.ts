@@ -1,25 +1,28 @@
 /**
  * Prefer the device media loudspeaker over the telephony earpiece.
  *
- * On Android, WebRTC + mic often switches AudioManager into communication
- * mode and routes remote audio to the top "call" speaker. Where the platform
- * allows it, we declare a media playback session and pin the element sink to
- * a speaker-like output.
+ * IMPORTANT (Safari / WebKit): never set audioSession to "playback" on a
+ * page that also captures the mic. "playback" makes getUserMedia reject with
+ * InvalidStateError: "AudioSession category is not compatible with audio capture"
+ * and Safari will not show the permission dialog. Use "play-and-record".
  */
-export async function preferMediaLoudspeaker(
-  mediaEl?: HTMLMediaElement | null
-): Promise<void> {
+export function prepareAudioSessionForCall(): void {
   try {
     const nav = navigator as Navigator & {
       audioSession?: { type: string };
     };
-    // "playback" → media/speaker path. "play-and-record" often uses earpiece.
     if (nav.audioSession) {
-      nav.audioSession.type = "playback";
+      nav.audioSession.type = "play-and-record";
     }
   } catch {
     /* unsupported */
   }
+}
+
+export async function preferMediaLoudspeaker(
+  mediaEl?: HTMLMediaElement | null
+): Promise<void> {
+  prepareAudioSessionForCall();
 
   if (!mediaEl) return;
 

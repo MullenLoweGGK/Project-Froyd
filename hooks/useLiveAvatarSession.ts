@@ -13,7 +13,10 @@ import {
   isCreditsExhaustedFromResponse,
   markCreditsExhausted,
 } from "@/hooks/useCreditsExhausted";
-import { preferMediaLoudspeaker } from "@/lib/media-speaker";
+import {
+  preferMediaLoudspeaker,
+  prepareAudioSessionForCall,
+} from "@/lib/media-speaker";
 
 /** Survives leave → re-enter so we do not re-prompt / false-deny after a prior grant. */
 const MIC_GRANTED_STORAGE_KEY = "froyd_mic_granted";
@@ -79,17 +82,26 @@ function micPermissionHelpMessage(
 ): string {
   const en = language === "en";
   const detail = micErrorDetail(err);
+  const name =
+    err && typeof err === "object"
+      ? (err as { name?: string }).name ?? ""
+      : "";
   const denied =
     perm === "denied" ||
-    (err &&
-      typeof err === "object" &&
-      ((err as { name?: string }).name === "NotAllowedError" ||
-        (err as { name?: string }).name === "PermissionDeniedError"));
+    name === "NotAllowedError" ||
+    name === "PermissionDeniedError";
+
+  // Our own bug if we left AudioSession on "playback" — user should just retry.
+  if (name === "InvalidStateError" || /AudioSession/i.test(detail)) {
+    return en
+      ? "Audio was in the wrong mode for the microphone. Tap “Allow microphone and start” again."
+      : "Zvuk bol v zlom režime pre mikrofón. Ťuknite znova na „Povoliť mikrofón a začať“.";
+  }
 
   if (denied) {
     return en
-      ? `Safari has blocked the microphone for this site — it will not show the prompt again. In the address bar open Website Settings (aA / lock icon) → Microphone → Allow, also check System Settings → Privacy & Security → Microphone → Safari. Then try again. (${detail || perm})`
-      : `Safari má pre túto stránku mikrofón zakázaný — dialóg sa preto nezobrazí. V paneli adresy otvorte Nastavenia pre túto webovú lokalitu (aA / zámok) → Mikrofón → Povoliť. Skontrolujte aj System Settings → Privacy & Security → Microphone → Safari. Potom skúste znova. (${detail || perm})`;
+      ? `Safari has blocked the microphone for this site. In the address bar open Website Settings → Microphone → Allow, then try again. (${detail || perm})`
+      : `Safari má pre túto stránku mikrofón zakázaný. V paneli adresy: Nastavenia pre túto webovú lokalitu → Mikrofón → Povoliť, potom skúste znova. (${detail || perm})`;
   }
 
   return en
@@ -537,6 +549,8 @@ export function useLiveAvatarSession() {
       };
 
       // 1) Resolve GUM started in the click handler (Safari permission dialog).
+      // Must be play-and-record — "playback" → InvalidStateError, no dialog.
+      prepareAudioSessionForCall();
       try {
         const stream = await (opts?.micPromise ??
           navigator.mediaDevices.getUserMedia({ audio: true }));
@@ -544,7 +558,17 @@ export function useLiveAvatarSession() {
         markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
       } catch (err) {
         console.error("[LiveAvatar] getUserMedia failed", micErrorDetail(err));
-        return fail(err, "permission");
+        // Retry once after forcing play-and-record (click may have raced).
+        prepareAudioSessionForCall();
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          stream.getTracks().forEach((t) => t.stop());
+          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+        } catch (err2) {
+          return fail(err2, "permission");
+        }
       }
 
       // 2) LiveKit voice chat → red mic icon in the URL bar.
@@ -644,19 +668,13 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // Do NOT call getUserMedia here. Probe+stop steals Safari’s gesture and
-      // kills the track; the red URL-bar mic icon never comes back.
-      // Real mic acquire is voiceChat.start() under the Začať click.
+      // Do NOT call getUserMedia here. Real mic acquire is under the Začať click.
+      // Do NOT set audioSession to "playback" / unlock audio yet — that makes
+      // Safari reject later getUserMedia with AudioSession category error.
       if (await isMicrophoneAlreadyAllowed()) {
         markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
       }
-
-      try {
-        await preferMediaLoudspeaker(videoRef.current);
-        await unlockBrowserAudio();
-      } catch {
-        /* best-effort */
-      }
+      prepareAudioSessionForCall();
 
       if (sessionRef.current) {
         await stopSession();

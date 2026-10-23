@@ -113,12 +113,18 @@ export function AvatarModal({
   function handleStartNow() {
     if (preparingIntro) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      void confirmReady(); // will surface unsupported/mic error path
+      void confirmReady();
       return;
     }
-    // CRITICAL (Safari): start getUserMedia in this synchronous click turn.
-    // Starting it only after await confirmReady() / React state updates means
-    // no permission dialog (especially after a prior deny).
+    // Safari: "playback" AudioSession (set while priming avatar video) blocks
+    // capture — switch to play-and-record BEFORE starting getUserMedia.
+    try {
+      const nav = navigator as Navigator & { audioSession?: { type: string } };
+      if (nav.audioSession) nav.audioSession.type = "play-and-record";
+    } catch {
+      /* unsupported */
+    }
+    // Start getUserMedia in this synchronous click turn (permission dialog).
     const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
     readyStartedRef.current = true;
     void (async () => {
