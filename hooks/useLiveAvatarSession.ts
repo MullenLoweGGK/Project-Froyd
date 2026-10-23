@@ -128,7 +128,11 @@ type SessionLike = {
   stopListening: () => string;
   startListening: () => string;
   voiceChat: {
+    /** SDK VoiceChatState: INACTIVE | STARTING | ACTIVE */
+    state: string;
     isMuted: boolean;
+    /** Must run under a user gesture on Safari when still INACTIVE. */
+    start: (config?: { defaultMuted?: boolean }) => Promise<void>;
     mute: () => Promise<void>;
     unmute: () => Promise<void>;
     on: (event: string, cb: (...args: never[]) => void) => void;
@@ -482,26 +486,93 @@ export function useLiveAvatarSession() {
     }, maxMs);
   }, [clearMaxDurationTimer, stopSession]);
 
+  /**
+   * Safari: voiceChat.start / track.unmute(restartTrack) need a user gesture.
+   * session.start() runs after await fetch — gesture is gone, so start often
+   * stays INACTIVE (isMuted === true forever; unmute is a no-op). Call this
+   * from Začať / Zapnúť clicks before any await delay.
+   */
+  const ensureMicLiveUnderGesture = useCallback(
+    async (
+      session: SessionLike,
+      opts?: { /** After Ahoj / Zapnúť — open the turn counter. Default true. */
+        activateConversation?: boolean }
+    ) => {
+      const activate = opts?.activateConversation !== false;
+      const gate = introGateRef.current;
+      if (gate && activate) {
+        // Never leave Zapnúť blocked because speak_ended was missed.
+        gate.introInProgress = false;
+        gate.conversationActive = true;
+      }
+
+      const vc = session.voiceChat;
+      try {
+        if (vc.state !== "ACTIVE") {
+          await vc.start({ defaultMuted: false });
+        } else if (vc.isMuted) {
+          await vc.unmute();
+        }
+      } catch (err) {
+        debugLog("ENSURE_MIC_PRIMARY_FAILED", err);
+        // Refresh permission under this click, then start again.
+        try {
+          await requestMicrophoneAccess();
+          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+          if (vc.state !== "ACTIVE") {
+            await vc.start({ defaultMuted: false });
+          } else if (vc.isMuted) {
+            await vc.unmute();
+          }
+        } catch (err2) {
+          debugLog("ENSURE_MIC_RETRY_FAILED", err2);
+        }
+      }
+
+      try {
+        session.startListening();
+      } catch (err) {
+        debugLog("ENSURE_MIC_START_LISTENING_FAILED", err);
+      }
+
+      const muted =
+        session.voiceChat.isMuted || session.voiceChat.state !== "ACTIVE";
+      setMicMuted(muted);
+      if (!muted) {
+        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+        armMaxDurationTimer();
+      }
+      return !muted;
+    },
+    [armMaxDurationTimer]
+  );
+
   const toggleMic = useCallback(async () => {
     const session = sessionRef.current;
     if (!session) return;
-    // Keep mic muted while the scripted intro is speaking / after question limit.
-    if (introGateRef.current?.introInProgress) return;
     if (introGateRef.current?.forceClosing || introGateRef.current?.closingSpeakPending) {
       return;
     }
+
+    const needsEnable =
+      session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted;
+
+    if (needsEnable) {
+      // Zapnúť must never no-op — restart voice chat under this click if needed.
+      await ensureMicLiveUnderGesture(session, { activateConversation: true });
+      return;
+    }
+
+    // Mute only when already live (do not block unmute behind introInProgress).
+    if (introGateRef.current?.introInProgress) return;
     try {
-      if (session.voiceChat.isMuted) {
-        await session.voiceChat.unmute();
-      } else {
-        await session.voiceChat.mute();
-      }
+      await session.voiceChat.mute();
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.error("[LiveAvatar] mic toggle failed", err);
       }
     }
-  }, []);
+  }, [ensureMicLiveUnderGesture]);
 
   const startSession = useCallback(
     async (config: LiveAvatarConfig) => {
@@ -624,9 +695,11 @@ export function useLiveAvatarSession() {
           VoiceChatEvent,
         } = sdk;
 
-        // LiveAvatar docs: default voiceChat {} = mic on unmuted. Stay on 0.0.13.
+        // Explicit unmuted default. Stay on 0.0.13.
+        // Note: voiceChat.start still runs after await fetch (no gesture) — Safari
+        // may leave it INACTIVE; confirmReady / Zapnúť restart under a click.
         const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: {},
+          voiceChat: { defaultMuted: false },
         });
         const sessionLike = session as unknown as SessionLike;
         sessionRef.current = sessionLike;
@@ -752,8 +825,12 @@ export function useLiveAvatarSession() {
 
         const activateConversation = async () => {
           gate.conversationActive = true;
+          // May run without a user gesture (after Ahoj). Unmute when already ACTIVE;
+          // if still INACTIVE, UI shows Zapnúť and the click restarts voice chat.
           try {
-            await sessionLike.voiceChat.unmute();
+            if (sessionLike.voiceChat.state === "ACTIVE") {
+              await sessionLike.voiceChat.unmute();
+            }
           } catch (err) {
             debugLog("CONVERSATION_UNMUTE_FAILED", err);
           }
@@ -762,7 +839,10 @@ export function useLiveAvatarSession() {
           } catch (err) {
             debugLog("START_LISTENING_FAILED", err);
           }
-          setMicMuted(sessionLike.voiceChat.isMuted);
+          const muted =
+            sessionLike.voiceChat.isMuted ||
+            sessionLike.voiceChat.state !== "ACTIVE";
+          setMicMuted(muted);
           // Re-assert playback + speaker so both sides stay audible after “Ahoj”.
           if (videoRef.current) {
             videoRef.current.muted = false;
@@ -1012,47 +1092,34 @@ export function useLiveAvatarSession() {
     if (!gate.streamReady || !gate.sessionConnected) return false;
     if (gate.introStarted) return false;
 
-    // Allow retry after a failed confirm.
-    if (gate.introStarted) {
-      gate.introStarted = false;
-    }
-
     gate.introStarted = true;
     setPreparingIntro(true);
     setError(null);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // Skip consent probes when the site already has mic access. Only hard-stop
-    // when the browser reports an explicit deny — never force cookie clearing.
-    const alreadyAllowed =
-      micPermissionGrantedRef.current || (await isMicrophoneAlreadyAllowed());
-    if (alreadyAllowed) {
-      markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-    } else {
-      try {
-        await requestMicrophoneAccess();
-        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-      } catch (err) {
-        console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
-        const perm = await readMicrophonePermissionState();
-        if (perm === "denied" || isNotAllowedError(err)) {
-          // One more chance: Permissions API can lag right after Allow.
-          if (await isMicrophoneAlreadyAllowed()) {
-            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-          } else if (perm === "denied") {
-            gate.introStarted = false;
-            setPreparingIntro(false);
-            setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
-            setStatus("awaiting-ready");
-            return false;
-          } else {
-            // Spurious Safari failure — proceed; voiceChat track may already be live.
-            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-          }
-        } else {
-          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-        }
+    // CRITICAL (Safari): start/unmute the mic NOW, before any await delay.
+    // After INTRO_BUFFER_MS the user gesture is gone and voiceChat.start /
+    // restartTrack silently fail — Zapnúť then looks broken.
+    const micLive = await ensureMicLiveUnderGesture(session, {
+      activateConversation: false,
+    });
+    if (introGateRef.current !== gate || sessionRef.current !== session) {
+      return false;
+    }
+    if (!micLive) {
+      const perm = await readMicrophonePermissionState();
+      if (perm === "denied") {
+        gate.introStarted = false;
+        setPreparingIntro(false);
+        setError(toHumanError("mic-denied", undefined, languageRef.current));
+        setStatus("awaiting-ready");
+        return false;
       }
+      // Still proceed — Zapnúť can retry under a later click.
+      debugLog("PRE_INTRO_MIC_NOT_LIVE", {
+        state: session.voiceChat.state,
+        muted: session.voiceChat.isMuted,
+      });
     }
 
     setError(null);
@@ -1077,11 +1144,12 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    // Keep mic live (no mute) — Safari cannot unmute after stopOnMute without a
-    // fresh click. introInProgress still blocks turn counting during “Ahoj”.
+    // Mic already live from the click above. Keep it through “Ahoj”.
+    // introInProgress only blocks turn counting / mute toggle, not Zapnúť.
     debugLog("INTRO_SCHEDULED", {
       sessionId: gate.sessionId,
       bufferMs: INTRO_BUFFER_MS,
+      voiceChatState: session.voiceChat.state,
       micMuted: session.voiceChat.isMuted,
     });
 
@@ -1109,20 +1177,20 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    // Ensure mic is unmuted under this click before “Ahoj” (gesture still valid).
+    // Soft re-assert (gesture may be gone — only works if track stayed live).
     try {
-      await session.voiceChat.unmute();
-    } catch (err) {
-      debugLog("PRE_INTRO_UNMUTE_FAILED", err);
-    }
-    try {
+      if (session.voiceChat.state === "ACTIVE" && session.voiceChat.isMuted) {
+        await session.voiceChat.unmute();
+      }
       session.startListening();
     } catch (err) {
-      debugLog("PRE_INTRO_START_LISTENING_FAILED", err);
+      debugLog("PRE_INTRO_REASSERT_FAILED", err);
     }
 
     if (gate.openingText) {
       gate.introInProgress = true;
+      // Turns must not count during Ahoj; conversation audio should already be live.
+      gate.conversationActive = false;
       setPreparingIntro(false);
       debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
       setStatus("avatar-speaking");
@@ -1131,32 +1199,24 @@ export function useLiveAvatarSession() {
         session.repeat(gate.openingText);
       } catch (err) {
         gate.introInProgress = false;
+        gate.conversationActive = true;
         debugLog("INTRO_REPEAT_FAILED", err);
-        void (async () => {
-          gate.conversationActive = true;
-          try {
-            await session.voiceChat.unmute();
-          } catch {
-            /* ignore */
-          }
-          try {
-            session.startListening();
-          } catch {
-            /* ignore */
-          }
-          setMicMuted(session.voiceChat.isMuted);
-          setStatus("ready");
-        })();
+        setMicMuted(
+          session.voiceChat.isMuted || session.voiceChat.state !== "ACTIVE"
+        );
+        setStatus("ready");
       }
       return true;
     }
 
     setPreparingIntro(false);
     gate.conversationActive = true;
-    setMicMuted(session.voiceChat.isMuted);
+    setMicMuted(
+      session.voiceChat.isMuted || session.voiceChat.state !== "ACTIVE"
+    );
     setStatus("ready");
     return true;
-  }, []);
+  }, [ensureMicLiveUnderGesture]);
 
   useEffect(() => {
     return () => {
