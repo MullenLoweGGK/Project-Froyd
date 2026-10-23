@@ -12,8 +12,6 @@ import { useLiveAvatarSession } from "@/hooks/useLiveAvatarSession";
 import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 import { froydContent } from "@/lib/ldz-content";
 
-const READY_COUNTDOWN_MS = 30_000;
-
 type Props = {
   scenario: AvatarScenario;
   language?: ConversationLanguage;
@@ -82,24 +80,7 @@ export function AvatarModal({
 
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
 
-  // After 30s, auto-start only if mic was already granted on "Spustiť".
-  // On iOS, a timer has no user gesture — without prior grant getUserMedia fails
-  // silently (no prompt) and only shows a red error.
-  useEffect(() => {
-    if (!awaitingReady) {
-      readyStartedRef.current = false;
-      return;
-    }
-    if (!micPermissionGranted) return;
-
-    const timer = window.setTimeout(() => {
-      if (readyStartedRef.current) return;
-      readyStartedRef.current = true;
-      void confirmReady();
-    }, READY_COUNTDOWN_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [awaitingReady, confirmReady, micPermissionGranted]);
+  // Never auto-start: Safari needs a real click for voiceChat.start() (red mic icon).
 
   if (!open) return null;
 
@@ -207,24 +188,9 @@ export function AvatarModal({
                 <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
                   {copy.readyEmphasis}
                 </p>
-                {!micPermissionGranted ? (
-                  <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
-                    {copy.readyMicHint}
-                  </p>
-                ) : (
-                  <div
-                    className="ldz-modal__ready-progress"
-                    aria-hidden="true"
-                  >
-                    <div
-                      key={status}
-                      className="ldz-modal__ready-progress-fill"
-                      style={{
-                        animationDuration: `${READY_COUNTDOWN_MS}ms`,
-                      }}
-                    />
-                  </div>
-                )}
+                <p className="ldz-modal__ready-copy ldz-modal__ready-copy--emphasis">
+                  {copy.readyMicHint}
+                </p>
               </div>
             ) : null}
             {preparingIntro ? (
@@ -274,7 +240,7 @@ export function AvatarModal({
                 onClick={() => void handleStartNow()}
                 disabled={preparingIntro}
               >
-                {micPermissionGranted ? copy.startNow : copy.allowMicAndStart}
+                {copy.allowMicAndStart}
               </button>
               <button
                 type="button"

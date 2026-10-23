@@ -18,22 +18,6 @@ import { preferMediaLoudspeaker } from "@/lib/media-speaker";
 /** Survives leave → re-enter so we do not re-prompt / false-deny after a prior grant. */
 const MIC_GRANTED_STORAGE_KEY = "froyd_mic_granted";
 
-/**
- * Probe+release mic. On iOS Safari the first grant must run under a user gesture.
- * Use plain `{ audio: true }` — detailed constraints can fail as OverconstrainedError
- * on some iPhones without showing a permission dialog.
- */
-async function requestMicrophoneAccess(): Promise<void> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  stream.getTracks().forEach((t) => t.stop());
-}
-
-function micErrorDetail(err: unknown): string {
-  if (!err || typeof err !== "object") return String(err);
-  const e = err as { name?: string; message?: string };
-  return [e.name, e.message].filter(Boolean).join(": ") || String(err);
-}
-
 function readStoredMicGranted(): boolean {
   try {
     return window.localStorage?.getItem(MIC_GRANTED_STORAGE_KEY) === "1";
@@ -80,11 +64,6 @@ function markMicrophoneAllowed(
   ref.current = true;
   setGranted(true);
   writeStoredMicGranted();
-}
-
-function isNotAllowedError(err: unknown): boolean {
-  const name = err && typeof err === "object" ? (err as { name?: string }).name : "";
-  return name === "NotAllowedError" || name === "PermissionDeniedError";
 }
 
 export type LiveAvatarConfig = {
@@ -508,16 +487,18 @@ export function useLiveAvatarSession() {
 
       const vc = session.voiceChat;
       try {
-        // IMPORTANT (Safari): do NOT open a parallel getUserMedia() here.
-        // voiceChat.start → createLocalAudioTrack is the only mic acquire.
+        // Sole mic acquire path — must run under Začať click (Safari gesture).
+        // Creates the track that shows the red mic icon in the URL bar.
         if (vc.state !== "ACTIVE") {
+          console.info("[LiveAvatar] voiceChat.start under user gesture", {
+            prevState: vc.state,
+          });
           await vc.start({ defaultMuted: false });
         } else if (vc.isMuted) {
           await vc.unmute();
         }
       } catch (err) {
-        debugLog("ENSURE_MIC_PRIMARY_FAILED", err);
-        // One more start/unmute under the same click — no probe+stop.
+        console.error("[LiveAvatar] voiceChat.start failed", err);
         try {
           if (vc.state !== "ACTIVE") {
             await vc.start({ defaultMuted: false });
@@ -525,7 +506,7 @@ export function useLiveAvatarSession() {
             await vc.unmute();
           }
         } catch (err2) {
-          debugLog("ENSURE_MIC_RETRY_FAILED", err2);
+          console.error("[LiveAvatar] voiceChat.start retry failed", err2);
         }
       }
 
@@ -594,31 +575,11 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // Mic consent: if already allowed for this site, do not probe again.
-      // A second getUserMedia after leave/re-enter often fails on Safari and used
-      // to clear micPermissionGranted — forcing cookie clears to recover.
-      const alreadyAllowed =
-        micPermissionGrantedRef.current || (await isMicrophoneAlreadyAllowed());
-      if (alreadyAllowed) {
+      // Do NOT call getUserMedia here. Probe+stop steals Safari’s gesture and
+      // kills the track; the red URL-bar mic icon never comes back.
+      // Real mic acquire is voiceChat.start() under the Začať click.
+      if (await isMicrophoneAlreadyAllowed()) {
         markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-      } else {
-        try {
-          await requestMicrophoneAccess();
-          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-        } catch (err) {
-          console.error("[LiveAvatar] mic permission on start:", micErrorDetail(err));
-          // Never wipe a known grant on a spurious probe failure.
-          if (await isMicrophoneAlreadyAllowed()) {
-            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-          } else if (!isNotAllowedError(err)) {
-            // Ambiguous error — still allow ready CTA; LiveKit may open mic later.
-            micPermissionGrantedRef.current = true;
-            setMicPermissionGranted(true);
-          } else {
-            micPermissionGrantedRef.current = false;
-            setMicPermissionGranted(false);
-          }
-        }
       }
 
       try {
@@ -695,12 +656,11 @@ export function useLiveAvatarSession() {
           VoiceChatEvent,
         } = sdk;
 
-        // Explicit unmuted default. Stay on 0.0.13.
-        // Note: voiceChat.start still runs after await fetch (no gesture) — Safari
-        // may leave it INACTIVE; confirmReady / Zapnúť restart under a click.
-        const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: { defaultMuted: false },
-        });
+        // Stay on 0.0.13. Do NOT pass voiceChat here — SDK would call
+        // voiceChat.start() inside session.start() after await fetch (no gesture).
+        // Safari then fails silently → no red mic icon in the URL bar.
+        // We start voice chat only from the Začať click (confirmReady).
+        const session = new LiveAvatarSession(sessionToken, {});
         const sessionLike = session as unknown as SessionLike;
         sessionRef.current = sessionLike;
 
@@ -1095,11 +1055,13 @@ export function useLiveAvatarSession() {
     gate.introStarted = true;
     setPreparingIntro(true);
     setError(null);
-    debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
+    debugLog("USER_READY_CONFIRMED", {
+      sessionId: gate.sessionId,
+      voiceChatState: session.voiceChat.state,
+    });
 
-    // CRITICAL (Safari): start/unmute the mic NOW, before any await delay.
-    // After INTRO_BUFFER_MS the user gesture is gone and voiceChat.start /
-    // restartTrack silently fail — Zapnúť then looks broken.
+    // CRITICAL (Safari): first await under this click MUST be voiceChat.start().
+    // That is what shows the red mic icon in the URL bar.
     const micLive = await ensureMicLiveUnderGesture(session, {
       activateConversation: false,
     });
@@ -1107,19 +1069,15 @@ export function useLiveAvatarSession() {
       return false;
     }
     if (!micLive) {
-      const perm = await readMicrophonePermissionState();
-      if (perm === "denied") {
-        gate.introStarted = false;
-        setPreparingIntro(false);
-        setError(toHumanError("mic-denied", undefined, languageRef.current));
-        setStatus("awaiting-ready");
-        return false;
-      }
-      // Still proceed — Zapnúť can retry under a later click.
-      debugLog("PRE_INTRO_MIC_NOT_LIVE", {
+      console.error("[LiveAvatar] mic not live after Začať", {
         state: session.voiceChat.state,
         muted: session.voiceChat.isMuted,
       });
+      gate.introStarted = false;
+      setPreparingIntro(false);
+      setError(toHumanError("mic-denied", undefined, languageRef.current));
+      setStatus("awaiting-ready");
+      return false;
     }
 
     setError(null);
