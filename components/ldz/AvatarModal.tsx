@@ -134,10 +134,14 @@ export function AvatarModal({
   }
 
   async function handleStartNow() {
-    if (readyStartedRef.current || preparingIntro) return;
+    if (preparingIntro) return;
     readyStartedRef.current = true;
-    const ok = await confirmReady();
-    if (!ok) readyStartedRef.current = false;
+    try {
+      const ok = await confirmReady();
+      if (!ok) readyStartedRef.current = false;
+    } catch {
+      readyStartedRef.current = false;
+    }
   }
 
   return (
