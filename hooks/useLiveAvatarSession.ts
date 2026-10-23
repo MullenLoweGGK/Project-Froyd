@@ -15,6 +15,9 @@ import {
 } from "@/hooks/useCreditsExhausted";
 import { preferMediaLoudspeaker } from "@/lib/media-speaker";
 
+/** Survives leave → re-enter so we do not re-prompt / false-deny after a prior grant. */
+const MIC_GRANTED_STORAGE_KEY = "froyd_mic_granted";
+
 /**
  * Probe+release mic. On iOS Safari the first grant must run under a user gesture.
  * Use plain `{ audio: true }` — detailed constraints can fail as OverconstrainedError
@@ -29,6 +32,59 @@ function micErrorDetail(err: unknown): string {
   if (!err || typeof err !== "object") return String(err);
   const e = err as { name?: string; message?: string };
   return [e.name, e.message].filter(Boolean).join(": ") || String(err);
+}
+
+function readStoredMicGranted(): boolean {
+  try {
+    return window.localStorage?.getItem(MIC_GRANTED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredMicGranted(): void {
+  try {
+    window.localStorage?.setItem(MIC_GRANTED_STORAGE_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
+async function readMicrophonePermissionState(): Promise<
+  PermissionState | "unknown"
+> {
+  try {
+    const permissions = navigator.permissions;
+    if (!permissions?.query) return "unknown";
+    const status = await permissions.query({
+      name: "microphone" as PermissionName,
+    });
+    return status.state;
+  } catch {
+    return "unknown";
+  }
+}
+
+/** Site already has mic access — skip consent probes that Safari fails after leave/re-enter. */
+async function isMicrophoneAlreadyAllowed(): Promise<boolean> {
+  const perm = await readMicrophonePermissionState();
+  if (perm === "granted") return true;
+  if (perm === "denied") return false;
+  return readStoredMicGranted();
+}
+
+function markMicrophoneAllowed(
+  ref: { current: boolean },
+  setGranted: (v: boolean) => void
+): void {
+  ref.current = true;
+  setGranted(true);
+  writeStoredMicGranted();
+}
+
+function isNotAllowedError(err: unknown): boolean {
+  const name = err && typeof err === "object" ? (err as { name?: string }).name : "";
+  return name === "NotAllowedError" || name === "PermissionDeniedError";
 }
 
 export type LiveAvatarConfig = {
@@ -301,6 +357,20 @@ export function useLiveAvatarSession() {
     transcriptRef.current = transcript;
   }, [transcript]);
 
+  // Restore prior grant so leave → re-enter does not demand a new consent dance.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const allowed = await isMicrophoneAlreadyAllowed();
+      if (cancelled || !allowed) return;
+      micPermissionGrantedRef.current = true;
+      setMicPermissionGranted(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const clearMaxDurationTimer = useCallback(() => {
     if (maxDurationTimerRef.current) {
       clearTimeout(maxDurationTimerRef.current);
@@ -453,16 +523,31 @@ export function useLiveAvatarSession() {
         return;
       }
 
-      // iOS Safari: request mic on the tap that starts the session (user gesture).
-      // Never block session create if this fails — user can grant on "Začať rozhovor hneď".
-      try {
-        await requestMicrophoneAccess();
-        micPermissionGrantedRef.current = true;
-        setMicPermissionGranted(true);
-      } catch (err) {
-        micPermissionGrantedRef.current = false;
-        setMicPermissionGranted(false);
-        console.error("[LiveAvatar] mic permission on start:", micErrorDetail(err));
+      // Mic consent: if already allowed for this site, do not probe again.
+      // A second getUserMedia after leave/re-enter often fails on Safari and used
+      // to clear micPermissionGranted — forcing cookie clears to recover.
+      const alreadyAllowed =
+        micPermissionGrantedRef.current || (await isMicrophoneAlreadyAllowed());
+      if (alreadyAllowed) {
+        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+      } else {
+        try {
+          await requestMicrophoneAccess();
+          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+        } catch (err) {
+          console.error("[LiveAvatar] mic permission on start:", micErrorDetail(err));
+          // Never wipe a known grant on a spurious probe failure.
+          if (await isMicrophoneAlreadyAllowed()) {
+            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+          } else if (!isNotAllowedError(err)) {
+            // Ambiguous error — still allow ready CTA; LiveKit may open mic later.
+            micPermissionGrantedRef.current = true;
+            setMicPermissionGranted(true);
+          } else {
+            micPermissionGrantedRef.current = false;
+            setMicPermissionGranted(false);
+          }
+        }
       }
 
       try {
@@ -927,28 +1012,47 @@ export function useLiveAvatarSession() {
     if (!gate.streamReady || !gate.sessionConnected) return false;
     if (gate.introStarted) return false;
 
+    // Allow retry after a failed confirm.
+    if (gate.introStarted) {
+      gate.introStarted = false;
+    }
+
     gate.introStarted = true;
     setPreparingIntro(true);
     setError(null);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // If mic was already granted on "Spustiť", do not call getUserMedia again —
-    // a second probe on iOS often fails spuriously and only shows a redundant error.
-    if (!micPermissionGrantedRef.current) {
+    // Skip consent probes when the site already has mic access. Only hard-stop
+    // when the browser reports an explicit deny — never force cookie clearing.
+    const alreadyAllowed =
+      micPermissionGrantedRef.current || (await isMicrophoneAlreadyAllowed());
+    if (alreadyAllowed) {
+      markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+    } else {
       try {
         await requestMicrophoneAccess();
-        micPermissionGrantedRef.current = true;
-        setMicPermissionGranted(true);
+        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
       } catch (err) {
         console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
-        gate.introStarted = false;
-        setPreparingIntro(false);
-        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
-        setStatus("awaiting-ready");
-        return false;
+        const perm = await readMicrophonePermissionState();
+        if (perm === "denied" || isNotAllowedError(err)) {
+          // One more chance: Permissions API can lag right after Allow.
+          if (await isMicrophoneAlreadyAllowed()) {
+            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+          } else if (perm === "denied") {
+            gate.introStarted = false;
+            setPreparingIntro(false);
+            setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+            setStatus("awaiting-ready");
+            return false;
+          } else {
+            // Spurious Safari failure — proceed; voiceChat track may already be live.
+            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+          }
+        } else {
+          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+        }
       }
-    } else {
-      setMicPermissionGranted(true);
     }
 
     setError(null);
