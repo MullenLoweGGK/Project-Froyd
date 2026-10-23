@@ -143,8 +143,9 @@ type SessionLike = {
 
 /**
  * Ensure LiveKit mic is ACTIVE + unmuted + agent listening.
- * Call under a user gesture (Začať / Zapnúť). Soft unmute first; if that
- * cannot revive a stopped track, recreate voiceChat (with one warm+retry).
+ * Call under a user gesture (Začať / Zapnúť). Prefer unmute; only start() when
+ * INACTIVE. Avoid stop() unless recreate is required — stop+start often throws
+ * on Safari after leave/re-enter.
  */
 async function ensureMicLive(session: SessionLike): Promise<boolean> {
   const vc = session.voiceChat;
@@ -161,7 +162,7 @@ async function ensureMicLive(session: SessionLike): Promise<boolean> {
     return true;
   }
 
-  if (vc.state === "ACTIVE" && vc.isMuted) {
+  if (vc.state === "ACTIVE") {
     try {
       await vc.unmute();
     } catch (err) {
@@ -173,31 +174,43 @@ async function ensureMicLive(session: SessionLike): Promise<boolean> {
     }
   }
 
-  try {
-    vc.stop();
-  } catch {
-    /* ignore */
+  // INACTIVE (or still muted with a dead track): start fresh without stop when
+  // possible; stop only if SDK thinks chat is already started.
+  if (vc.state !== "INACTIVE") {
+    try {
+      vc.stop();
+    } catch {
+      /* ignore */
+    }
   }
 
-  const startUnmuted = async () => {
-    await vc.start({ defaultMuted: false });
-  };
-
   try {
-    await startUnmuted();
+    await vc.start({ defaultMuted: false });
   } catch (err) {
     debugLog("ENSURE_MIC_START_FAILED", err);
-    // Safari after leave/re-enter: warm permission under this click, then retry.
     try {
       await requestMicrophoneAccess();
-      await startUnmuted();
+      if (vc.state !== "INACTIVE") {
+        try {
+          vc.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      await vc.start({ defaultMuted: false });
     } catch (retryErr) {
       debugLog("ENSURE_MIC_START_RETRY_FAILED", retryErr);
       return false;
     }
   }
 
-  if (vc.state === "ACTIVE" && vc.isMuted) {
+  // start() can no-op silently when the room is not connected.
+  if (vc.state !== "ACTIVE") {
+    debugLog("ENSURE_MIC_NOT_ACTIVE", { state: vc.state });
+    return false;
+  }
+
+  if (vc.isMuted) {
     try {
       await vc.unmute();
     } catch {
@@ -206,7 +219,7 @@ async function ensureMicLive(session: SessionLike): Promise<boolean> {
   }
 
   listen();
-  return vc.state === "ACTIVE" && !vc.isMuted;
+  return !vc.isMuted;
 }
 
 type IntroGate = {
@@ -1119,44 +1132,38 @@ export function useLiveAvatarSession() {
     const session = sessionRef.current;
     if (!gate || !session) return false;
     if (!gate.streamReady || !gate.sessionConnected) return false;
-    if (gate.introStarted) return false;
+    // Allow retry after a failed confirm (do not stick the latch).
+    if (gate.introStarted) {
+      gate.introStarted = false;
+    }
 
     gate.introStarted = true;
     setPreparingIntro(true);
     setError(null);
     debugLog("USER_READY_CONFIRMED", { sessionId: gate.sessionId });
 
-    // Skip a new consent probe when the site already has mic access.
-    const alreadyAllowed =
-      micPermissionGrantedRef.current || (await isMicrophoneAlreadyAllowed());
-    if (alreadyAllowed) {
-      markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-    } else {
-      try {
-        await requestMicrophoneAccess();
-        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-      } catch (err) {
-        console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
-        const stillAllowed = await isMicrophoneAlreadyAllowed();
-        if (stillAllowed) {
+    // Empty intro: keep getUserMedia / unmute as the first awaits under this click.
+    // When already granted, skip permission probes so Safari keeps the user gesture.
+    if (!gate.openingText) {
+      if (!micPermissionGrantedRef.current) {
+        const allowed = await isMicrophoneAlreadyAllowed();
+        if (allowed) {
           markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
         } else {
-          gate.introStarted = false;
-          setPreparingIntro(false);
-          setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
-          setStatus("awaiting-ready");
-          return false;
+          try {
+            await requestMicrophoneAccess();
+            markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+          } catch (err) {
+            console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
+            gate.introStarted = false;
+            setPreparingIntro(false);
+            setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+            setStatus("awaiting-ready");
+            return false;
+          }
         }
       }
-    }
 
-    setError(null);
-
-    if (introGateRef.current !== gate || sessionRef.current !== session) return false;
-
-    // Empty intro (courses): activate mic under this click (same end-state as
-    // main after AVATAR_SPEAK_ENDED). Recreate track if soft unmute is not enough.
-    if (!gate.openingText) {
       gate.conversationActive = true;
       const micOk = await ensureMicLive(session);
       if (!micOk) {
@@ -1199,6 +1206,25 @@ export function useLiveAvatarSession() {
     }
 
     // Scripted intro (main campaign path)
+    if (!micPermissionGrantedRef.current) {
+      const allowed = await isMicrophoneAlreadyAllowed();
+      if (allowed) {
+        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+      } else {
+        try {
+          await requestMicrophoneAccess();
+          markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+        } catch (err) {
+          console.error("[LiveAvatar] mic permission on confirm:", micErrorDetail(err));
+          gate.introStarted = false;
+          setPreparingIntro(false);
+          setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+          setStatus("awaiting-ready");
+          return false;
+        }
+      }
+    }
+
     await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
 
