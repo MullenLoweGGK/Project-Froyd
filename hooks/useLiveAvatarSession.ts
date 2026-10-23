@@ -125,15 +125,39 @@ type SessionLike = {
  * Ensure LiveAvatar voice chat is ACTIVE and listening.
  * If session.start() could not open the mic (common on Safari without a gesture),
  * voiceChat stays INACTIVE and unmute() silently does nothing — avatar video still works.
+ * After start(), state may briefly stay STARTING — poll before treating as failure.
  */
 async function ensureVoiceChatListening(session: SessionLike): Promise<void> {
   const vc = session.voiceChat;
   if (vc.state !== "ACTIVE") {
     await vc.start({ defaultMuted: false });
-    return;
-  }
-  if (vc.isMuted) {
+  } else if (vc.isMuted) {
     await vc.unmute();
+  }
+
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline) {
+    if (vc.state === "ACTIVE" && !vc.isMuted) return;
+    if (vc.state === "ACTIVE" && vc.isMuted) {
+      try {
+        await vc.unmute();
+      } catch {
+        /* retry loop */
+      }
+    } else if (vc.state !== "ACTIVE" && vc.state !== "STARTING") {
+      try {
+        await vc.start({ defaultMuted: false });
+      } catch {
+        /* retry loop */
+      }
+    }
+    await new Promise((r) => window.setTimeout(r, 100));
+  }
+
+  if (vc.state !== "ACTIVE" || vc.isMuted) {
+    throw new Error(
+      `voiceChat not listening (state=${vc.state} muted=${vc.isMuted})`
+    );
   }
 }
 
@@ -205,8 +229,8 @@ function toHumanError(
       return froydContent.creditLimit.message;
     case "mic-denied":
       return en
-        ? "Please allow the microphone, then click “Start conversation now” again. In Safari: Safari → Settings for This Website → Microphone, or System Settings → Privacy & Security → Microphone."
-        : "Povoľte mikrofón a znova kliknite na „Začať rozhovor hneď“. V Safari: Safari → Nastavenia pre tento web → Mikrofón, alebo Systémové nastavenia → Súkromie a bezpečnosť → Mikrofón.";
+        ? "Please allow the microphone, then click “Start conversation” again. In Safari: Safari → Settings for This Website → Microphone, or System Settings → Privacy & Security → Microphone."
+        : "Povoľte mikrofón a znova kliknite na „Začať rozhovor“. V Safari: Safari → Nastavenia pre tento web → Mikrofón, alebo Systémové nastavenia → Súkromie a bezpečnosť → Mikrofón.";
     case "connection":
       return en
         ? "Connection failed. Check your internet and try again."
@@ -1004,9 +1028,30 @@ export function useLiveAvatarSession() {
   const confirmReady = useCallback(async (): Promise<boolean> => {
     const gate = introGateRef.current;
     const session = sessionRef.current;
-    if (!gate || !session) return false;
-    if (!gate.streamReady || !gate.sessionConnected) return false;
-    if (gate.introStarted) return false;
+    const lang = languageRef.current;
+
+    if (!gate || !session) {
+      setError(
+        lang === "en"
+          ? "The connection dropped. Close this window and start the conversation again."
+          : "Spojenie sa prerušilo. Zavrite okno a spustite rozhovor znova."
+      );
+      setStatus("error");
+      return false;
+    }
+    if (!gate.streamReady || !gate.sessionConnected) {
+      setError(
+        lang === "en"
+          ? "The avatar is still connecting. Wait a second, then click Start conversation again."
+          : "Avatar sa ešte pripája. Počkajte chvíľu a znova kliknite na Začať rozhovor."
+      );
+      setStatus("awaiting-ready");
+      return false;
+    }
+    // Allow retry after a failed confirm (introStarted may have been left true).
+    if (gate.introStarted) {
+      gate.introStarted = false;
+    }
 
     gate.introStarted = true;
     setPreparingIntro(true);
@@ -1020,6 +1065,8 @@ export function useLiveAvatarSession() {
     if (!gate.openingText) {
       let probe: MediaStream | null = null;
       try {
+        await unlockBrowserAudio();
+        await preferMediaLoudspeaker(videoRef.current);
         // Keep a live mic under the gesture so voiceChat.start() can publish audio.
         probe = await acquireMicrophoneStream();
         micPermissionGrantedRef.current = true;
@@ -1028,18 +1075,18 @@ export function useLiveAvatarSession() {
         console.error("[LiveAvatar] mic acquire on confirm:", micErrorDetail(err));
         gate.introStarted = false;
         setPreparingIntro(false);
-        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+        setError(toHumanError("mic-denied", micErrorDetail(err), lang));
         setStatus("awaiting-ready");
         return false;
       }
 
       if (introGateRef.current !== gate || sessionRef.current !== session) {
         probe.getTracks().forEach((t) => t.stop());
+        setPreparingIntro(false);
         return false;
       }
 
       gate.conversationActive = true;
-      setPreparingIntro(false);
 
       try {
         // If voiceChat failed during session.start(), unmute alone is a silent no-op.
@@ -1054,11 +1101,18 @@ export function useLiveAvatarSession() {
         probe.getTracks().forEach((t) => t.stop());
         gate.introStarted = false;
         gate.conversationActive = false;
-        setError(toHumanError("mic-denied", micErrorDetail(err), languageRef.current));
+        setPreparingIntro(false);
+        // Mic is often already allowed — this is usually a LiveAvatar voiceChat race.
+        setError(
+          lang === "en"
+            ? "Couldn’t turn on listening. Click “Start conversation” again."
+            : "Nepodarilo sa zapnúť počúvanie. Kliknite znova na „Začať rozhovor“."
+        );
         setStatus("awaiting-ready");
         return false;
       }
 
+      // Release our probe only after the SDK has taken over the mic.
       probe.getTracks().forEach((t) => t.stop());
 
       if (videoRef.current) {
@@ -1076,23 +1130,8 @@ export function useLiveAvatarSession() {
           /* ignore */
         }
       }
-      await unlockBrowserAudio();
-      await preferMediaLoudspeaker(videoRef.current);
 
-      if (session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted) {
-        gate.introStarted = false;
-        gate.conversationActive = false;
-        setError(
-          toHumanError(
-            "mic-denied",
-            `voiceChat state=${session.voiceChat.state} muted=${session.voiceChat.isMuted}`,
-            languageRef.current
-          )
-        );
-        setStatus("awaiting-ready");
-        return false;
-      }
-
+      setPreparingIntro(false);
       setError(null);
       setStatus("ready");
       return true;

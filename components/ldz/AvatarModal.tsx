@@ -134,10 +134,15 @@ export function AvatarModal({
   }
 
   async function handleStartNow() {
-    if (readyStartedRef.current || preparingIntro) return;
+    if (preparingIntro) return;
+    // Always allow another attempt after a failed confirm — don't stick the latch.
     readyStartedRef.current = true;
-    const ok = await confirmReady();
-    if (!ok) readyStartedRef.current = false;
+    try {
+      const ok = await confirmReady();
+      if (!ok) readyStartedRef.current = false;
+    } catch {
+      readyStartedRef.current = false;
+    }
   }
 
   const readyPrimaryLabel = micPermissionGranted

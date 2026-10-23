@@ -642,12 +642,6 @@ body {
   gap: 0.65rem;
 }
 
-/* Ready gate: keep the stage shorter so overlay CTA stays visible without scrolling. */
-.ldz-modal__panel--ready .ldz-modal__video-wrap {
-  width: min(100%, 22rem);
-  max-height: min(52dvh, 28rem);
-}
-
 .ldz-modal__header {
   display: flex;
   justify-content: space-between;
@@ -732,11 +726,12 @@ body {
   position: absolute;
   inset: 0;
   z-index: 2;
-  display: grid;
-  align-content: center;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   gap: 0.65rem;
-  padding: 1rem 1.1rem 1.15rem;
+  padding: 1.25rem 1.1rem 1.35rem;
   text-align: center;
   background: rgba(8, 28, 42, 0.78);
   color: rgba(255, 255, 255, 0.95);
@@ -748,7 +743,8 @@ body {
   flex-direction: column;
   gap: 0.55rem;
   width: min(100%, 16.5rem);
-  margin-top: 0.35rem;
+  margin-top: 0.5rem;
+  flex-shrink: 0;
 }
 
 .ldz-modal__ready-actions .ldz-btn {
