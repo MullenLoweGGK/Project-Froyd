@@ -32,10 +32,10 @@ const sk: ModalCopy = {
   idleHint: "Maximálny čas rozhovoru je 10 minút.",
   readyTitle: "Predtým než začnete",
   readyCopy:
-    "Nastavte si hlasitosť. Po štarte avatar krátko pozdraví — potom sa prihovorte vy.",
+    "Nastavte si hlasitosť. Po štarte avatar krátko pozdraví („Ahoj“) — potom hovoríte vy. Mikrofón ostane zapnutý počas celého rozhovoru.",
   readyEmphasis: "Počkajte, kým dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Ťuknite „Povoliť mikrofón a začať“. Ak Safari dialóg nevypýta, v paneli adresy (aA / zámok) nastavte Mikrofón → Povoliť.",
+    "Ťuknite „Povoliť mikrofón a začať“ a povoľte mikrofón, ak vás prehliadač vyzve.",
   preparingTitle: "Pripravujeme zvuk…",
   preparingCopy: "Ešte chvíľu.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
@@ -82,10 +82,10 @@ const en: ModalCopy = {
   idleHint: "Maximum conversation time is 10 minutes.",
   readyTitle: "Before you start",
   readyCopy:
-    "Set your volume. After start the avatar says a short hello — then you speak.",
+    "Set your volume. After start the avatar greets you briefly (“Hi”) — then you speak. The microphone stays on for the whole conversation.",
   readyEmphasis: "Wait until they finish before continuing.",
   readyMicHint:
-    "Tap “Start conversation now” and allow the microphone when the browser asks.",
+    "Tap “Allow microphone and start” and allow the mic if the browser asks.",
   preparingTitle: "Preparing audio…",
   preparingCopy: "One moment.",
   questionLimitStatus: "Question limit — you can end the conversation",
