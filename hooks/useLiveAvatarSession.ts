@@ -578,37 +578,78 @@ export function useLiveAvatarSession() {
     }, maxMs);
   }, [clearMaxDurationTimer, stopSession]);
 
-  const toggleMic = useCallback(async () => {
+  /**
+   * @param wantMuted — explicit intent from the button label. Avoids desync where
+   * UI says “Zapnúť mikrofón” but voiceChat.isMuted is already false (mute again).
+   */
+  const toggleMic = useCallback(async (wantMuted?: boolean) => {
     const session = sessionRef.current;
-    if (!session) return;
+    const lang = languageRef.current;
+    if (!session) {
+      setError(
+        lang === "en"
+          ? "Session ended. Start the conversation again."
+          : "Relácia skončila. Spustite rozhovor znova."
+      );
+      return;
+    }
     // Keep mic muted while the scripted intro is speaking / after question limit.
     if (introGateRef.current?.introInProgress) return;
     if (introGateRef.current?.forceClosing || introGateRef.current?.closingSpeakPending) {
       return;
     }
+    if (introGateRef.current?.questionLimitReached) return;
+
+    const shouldMute =
+      typeof wantMuted === "boolean"
+        ? wantMuted
+        : !(session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted);
+
+    setError(null);
+
     try {
-      // If voice chat never became ACTIVE (Safari after Spustiť), recreate under this click.
-      if (session.voiceChat.state !== "ACTIVE") {
-        await ensureVoiceChatListening(session, { forceRestart: true });
-        setMicMuted(session.voiceChat.isMuted);
-        return;
-      }
-      if (session.voiceChat.isMuted) {
-        await session.voiceChat.unmute();
+      if (!shouldMute) {
+        // Unmute under this click — recreate track if needed (Safari).
+        let ok = await ensureVoiceChatListening(session, {
+          forceRestart: session.voiceChat.state !== "ACTIVE",
+        });
+        if (!ok || session.voiceChat.isMuted) {
+          ok = await ensureVoiceChatListening(session, { forceRestart: true });
+        }
+        if (!ok || session.voiceChat.isMuted) {
+          setMicMuted(true);
+          setError(
+            lang === "en"
+              ? "Couldn’t enable the microphone. Check Safari → Settings for This Website → Microphone."
+              : "Nepodarilo sa zapnúť mikrofón. Skontrolujte Safari → Nastavenia pre tento web → Mikrofón."
+          );
+          return;
+        }
+        setMicMuted(false);
         try {
           session.startListening();
         } catch {
           /* ignore */
         }
-      } else {
+        armMaxDurationTimer();
+        await preferMediaLoudspeaker(videoRef.current);
+        return;
+      }
+
+      if (session.voiceChat.state === "ACTIVE") {
         await session.voiceChat.mute();
       }
+      setMicMuted(true);
     } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[LiveAvatar] mic toggle failed", err);
-      }
+      debugLog("MIC_TOGGLE_FAILED", err);
+      setMicMuted(true);
+      setError(
+        lang === "en"
+          ? "Microphone action failed. Try again."
+          : "Akcia s mikrofónom zlyhala. Skúste znova."
+      );
     }
-  }, []);
+  }, [armMaxDurationTimer]);
 
   const startSession = useCallback(
     async (config: LiveAvatarConfig) => {
@@ -837,9 +878,13 @@ export function useLiveAvatarSession() {
               muted: sessionLike.voiceChat.isMuted,
             });
             void (async () => {
+              // Soft unmute from session.start({ defaultMuted: true }).
               await ensureVoiceChatListening(sessionLike, { forceRestart: false });
               if (!isCurrentSession()) return;
               setMicMuted(sessionLike.voiceChat.isMuted);
+              if (!sessionLike.voiceChat.isMuted) {
+                armMaxDurationTimer();
+              }
               if (videoRef.current) {
                 await primeAvatarMedia(videoRef.current, () => {
                   try {

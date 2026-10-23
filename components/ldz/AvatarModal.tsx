@@ -310,7 +310,7 @@ export function AvatarModal({
                 <button
                   type="button"
                   className="ldz-btn ldz-btn--primary"
-                  onClick={() => void toggleMic()}
+                  onClick={() => void toggleMic(micMuted ? false : true)}
                   aria-pressed={micMuted}
                 >
                   {micMuted ? copy.unmute : copy.mute}
