@@ -47,7 +47,7 @@ export type LiveAvatarConfig = {
   questionLimitMessage?: string;
   /** Spoken on every further user turn after the limit (5th+). */
   questionLimitFollowupMessage?: string;
-  /** Talk clock after first mic unmute (ms). Default 120s. Courses: 10 min. */
+  /** Talk clock after first mic unmute (ms). Default 120s. */
   maxSessionMs?: number;
 };
 
@@ -70,12 +70,8 @@ type SessionLike = {
   repeat: (message: string) => string;
   interrupt: () => void;
   stopListening: () => string;
-  startListening: () => string;
   voiceChat: {
-    state: string;
     isMuted: boolean;
-    start: (config?: { defaultMuted?: boolean }) => Promise<void>;
-    stop: () => void;
     mute: () => Promise<void>;
     unmute: () => Promise<void>;
     on: (event: string, cb: (...args: never[]) => void) => void;
@@ -394,7 +390,7 @@ export function useLiveAvatarSession() {
     setStatus("stopped");
   }, [clearMaxDurationTimer, resetIntroGate, saveTranscript]);
 
-  /** Starts the talk clock once — first mic unmute after the intro / ready confirm. */
+  /** Starts the talk clock once — first mic unmute after the intro. */
   const armMaxDurationTimer = useCallback(() => {
     if (maxDurationArmedRef.current) return;
     maxDurationArmedRef.current = true;
@@ -423,15 +419,9 @@ export function useLiveAvatarSession() {
     if (introGateRef.current?.forceClosing || introGateRef.current?.closingSpeakPending) {
       return;
     }
-    if (introGateRef.current?.questionLimitReached) return;
     try {
       if (session.voiceChat.isMuted) {
         await session.voiceChat.unmute();
-        try {
-          session.startListening();
-        } catch {
-          /* ignore */
-        }
       } else {
         await session.voiceChat.mute();
       }
@@ -564,7 +554,6 @@ export function useLiveAvatarSession() {
           introInProgress: false,
           conversationActive: false,
           userTurnCount: 0,
-          // Omit / non-positive = no hard question limit (courses).
           questionLimit:
             typeof config.questionLimit === "number" && config.questionLimit > 0
               ? Math.max(1, config.questionLimit)
@@ -607,20 +596,12 @@ export function useLiveAvatarSession() {
           }
 
           gate.readyPromptShown = true;
-          debugLog("READY_GATE", {
-            sessionId: gate.sessionId,
-            courses: !gate.openingText,
-          });
+          debugLog("READY_GATE", { sessionId: gate.sessionId });
 
-          // Campaign: mute until after scripted intro.
-          // Courses: keep the LiveKit mic track alive — mute+stopOnMute here
-          // prevents Safari from hearing the user after “Začať rozhovor”.
-          if (gate.openingText) {
-            try {
-              await sessionLike.voiceChat.mute();
-            } catch (err) {
-              debugLog("READY_GATE_MUTE_FAILED", err);
-            }
+          try {
+            await sessionLike.voiceChat.mute();
+          } catch (err) {
+            debugLog("READY_GATE_MUTE_FAILED", err);
           }
 
           if (videoRef.current) {
@@ -691,11 +672,6 @@ export function useLiveAvatarSession() {
             await sessionLike.voiceChat.unmute();
           } catch (err) {
             debugLog("CONVERSATION_UNMUTE_FAILED", err);
-          }
-          try {
-            sessionLike.startListening();
-          } catch (err) {
-            debugLog("START_LISTENING_FAILED", err);
           }
           // Mic unmute can flip Android into call/earpiece mode — re-assert media speaker.
           await preferMediaLoudspeaker(videoRef.current);
@@ -960,75 +936,6 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    // ── Courses (no scripted intro) ──
-    // Fresh voiceChat.start under THIS click — required on Safari Private, where
-    // the mic track created during session.start() (no gesture) is often silent.
-    if (!gate.openingText) {
-      gate.conversationActive = true;
-
-      try {
-        session.voiceChat.stop();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        await session.voiceChat.start({ defaultMuted: false });
-      } catch (err) {
-        debugLog("COURSES_VOICE_CHAT_START_FAILED", err);
-        // Fallback: unmute whatever track exists from session.start().
-        try {
-          await session.voiceChat.unmute();
-        } catch (unmuteErr) {
-          debugLog("COURSES_UNMUTE_FAILED", unmuteErr);
-        }
-      }
-      try {
-        session.startListening();
-      } catch (err) {
-        debugLog("COURSES_START_LISTENING_FAILED", err);
-      }
-
-      if (session.voiceChat.isMuted) {
-        gate.introStarted = false;
-        setPreparingIntro(false);
-        setMicMuted(true);
-        setError(
-          languageRef.current === "en"
-            ? "Microphone didn’t stay on. Avoid Private browsing, allow the mic for this site, then tap Start conversation again."
-            : "Mikrofón sa nepodarilo udržať zapnutý. Skúste bežné (nie súkromné) okno Safari, povoľte mikrofón pre tento web a znova ťuknite na Začať rozhovor."
-        );
-        setStatus("awaiting-ready");
-        return false;
-      }
-
-      await preferMediaLoudspeaker(videoRef.current);
-      await unlockBrowserAudio();
-      if (videoRef.current) {
-        await primeAvatarMedia(videoRef.current, () => {
-          try {
-            session.attach(videoRef.current as HTMLVideoElement);
-          } catch {
-            /* ignore */
-          }
-        });
-        videoRef.current.muted = false;
-        videoRef.current.defaultMuted = false;
-        videoRef.current.volume = 1;
-        try {
-          await videoRef.current.play();
-        } catch {
-          /* ignore */
-        }
-      }
-
-      setPreparingIntro(false);
-      setMicMuted(false);
-      setStatus("ready");
-      armMaxDurationTimer();
-      return true;
-    }
-
-    // ── Campaign path (scripted intro) — same as main ──
     await preferMediaLoudspeaker(videoRef.current);
     await unlockBrowserAudio();
 
@@ -1084,31 +991,38 @@ export function useLiveAvatarSession() {
 
     if (introGateRef.current !== gate || sessionRef.current !== session) return false;
 
-    gate.introInProgress = true;
-    setPreparingIntro(false);
-    debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
-    setStatus("avatar-speaking");
+    if (gate.openingText) {
+      gate.introInProgress = true;
+      setPreparingIntro(false);
+      debugLog("INTRO_STARTED", { sessionId: gate.sessionId });
+      setStatus("avatar-speaking");
 
-    try {
-      session.repeat(gate.openingText);
-    } catch (err) {
-      gate.introInProgress = false;
-      debugLog("INTRO_REPEAT_FAILED", err);
-      gate.conversationActive = true;
       try {
-        await session.voiceChat.unmute();
-      } catch {
-        /* ignore */
+        session.repeat(gate.openingText);
+      } catch (err) {
+        gate.introInProgress = false;
+        debugLog("INTRO_REPEAT_FAILED", err);
+        gate.conversationActive = true;
+        try {
+          await session.voiceChat.unmute();
+        } catch {
+          /* ignore */
+        }
+        setStatus("ready");
       }
-      try {
-        session.startListening();
-      } catch {
-        /* ignore */
-      }
-      setStatus("ready");
+      return true;
     }
+
+    setPreparingIntro(false);
+    gate.conversationActive = true;
+    try {
+      await session.voiceChat.unmute();
+    } catch {
+      /* ignore */
+    }
+    setStatus("ready");
     return true;
-  }, [armMaxDurationTimer]);
+  }, []);
 
   useEffect(() => {
     return () => {

@@ -25,27 +25,25 @@ type ModalCopy = {
   status: (status: AppStatus) => string;
 };
 
-/** Courses / PPDZ copy — participant speaks first, 10 min, no scripted intro. */
 const sk: ModalCopy = {
   title: (nameInstrumental) => `Rozhovor s ${nameInstrumental}`,
   close: "Zavrieť",
   closeAria: "Zavrieť rozhovor",
-  idleHint:
-    "Po spustení sa prihovorte avatarovi ako prví. Maximálny čas rozhovoru je 10 minút.",
+  idleHint: "Po štarte sa prihovorte ako prví. Maximálny čas je 10 minút.",
   readyTitle: "Predtým než začnete",
   readyCopy:
-    "Nastavte si hlasitosť zariadenia, aby ste avatara zreteľne počuli. Po štarte sa prihovorte vy — avatar sa sám nepredstaví.",
+    "Nastavte si hlasitosť zariadenia. Po štarte sa prihovorte vy — avatar sa sám nepredstaví.",
   readyEmphasis:
-    "Hovorte prirodzene, ako na kurze. Počkajte, kým avatar dohovorí, a až potom pokračujte.",
+    "Počkajte, kým avatar dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Ťuknite na „Začať rozhovor“ — vtedy sa zapne mikrofón. Ak Safari vypýta prístup, povoľte ho. Na testovanie použite bežné okno (nie Súkromné) — v private móde Safari mikrofón často neudrží.",
-  preparingTitle: "Zapíname počúvanie…",
+    "Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás prehliadač vyzve.",
+  preparingTitle: "Pripravujeme zvuk…",
   preparingCopy: "Ešte chvíľu.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
   micOn: " · Mikrofón zapnutý",
   micOff: " · Mikrofón stlmený",
   start: "Spustiť rozhovor",
-  startNow: "Začať rozhovor",
+  startNow: "Začať rozhovor hneď",
   allowMicAndStart: "Povoliť mikrofón a začať",
   end: "Ukončiť",
   endSession: "Ukončiť rozhovor",
@@ -82,22 +80,20 @@ const en: ModalCopy = {
   title: (_nameInstrumental, name) => `Conversation with ${name}`,
   close: "Close",
   closeAria: "Close conversation",
-  idleHint:
-    "After starting, speak to the avatar first. Maximum conversation time is 10 minutes.",
+  idleHint: "After start, you speak first. Maximum time is 10 minutes.",
   readyTitle: "Before you start",
   readyCopy:
-    "Set your device volume so you can hear the avatar clearly. After you start, you speak first — the avatar will not introduce themselves.",
-  readyEmphasis:
-    "Speak naturally. Wait until the avatar finishes before continuing.",
+    "Set your device volume. After start, you speak first — the avatar will not introduce themselves.",
+  readyEmphasis: "Wait until the avatar finishes before continuing.",
   readyMicHint:
-    "Tap “Start conversation” to turn the microphone on. If Safari asks for access, allow it. Prefer a normal window (not Private) — Private Safari often drops the mic.",
-  preparingTitle: "Enabling listening…",
+    "Tap “Start conversation now” and allow the microphone when the browser asks.",
+  preparingTitle: "Preparing audio…",
   preparingCopy: "One moment.",
   questionLimitStatus: "Question limit — you can end the conversation",
   micOn: " · Microphone on",
   micOff: " · Microphone muted",
   start: "Start conversation",
-  startNow: "Start conversation",
+  startNow: "Start conversation now",
   allowMicAndStart: "Allow microphone and start",
   end: "End",
   endSession: "End conversation",
