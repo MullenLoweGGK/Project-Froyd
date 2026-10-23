@@ -1114,9 +1114,8 @@ export function useLiveAvatarSession() {
           }
         });
 
-        // Safety net only — normal connect is a few seconds. Don't leave the UI
-        // stuck on “Pripravujeme avatara…” if LiveKit/HeyGen never resolves.
-        const START_TIMEOUT_MS = 15_000;
+        // Fail fast if LiveKit/HeyGen never resolves — avoid a stuck loading UI.
+        const START_TIMEOUT_MS = 3_000;
         await Promise.race([
           session.start(),
           new Promise<never>((_, reject) => {
@@ -1124,8 +1123,8 @@ export function useLiveAvatarSession() {
               reject(
                 new Error(
                   languageRef.current === "en"
-                    ? "Timed out connecting to the avatar (15s)."
-                    : "Vypršal čas pripojenia k avatarovi (15 s)."
+                    ? "Timed out connecting to the avatar (3s)."
+                    : "Vypršal čas pripojenia k avatarovi (3 s)."
                 )
               );
             }, START_TIMEOUT_MS);
