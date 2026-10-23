@@ -110,15 +110,25 @@ export function AvatarModal({
     });
   }
 
-  async function handleStartNow() {
+  function handleStartNow() {
     if (preparingIntro) return;
-    readyStartedRef.current = true;
-    try {
-      const ok = await confirmReady();
-      if (!ok) readyStartedRef.current = false;
-    } catch {
-      readyStartedRef.current = false;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      void confirmReady(); // will surface unsupported/mic error path
+      return;
     }
+    // CRITICAL (Safari): start getUserMedia in this synchronous click turn.
+    // Starting it only after await confirmReady() / React state updates means
+    // no permission dialog (especially after a prior deny).
+    const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+    readyStartedRef.current = true;
+    void (async () => {
+      try {
+        const ok = await confirmReady(micPromise);
+        if (!ok) readyStartedRef.current = false;
+      } catch {
+        readyStartedRef.current = false;
+      }
+    })();
   }
 
   return (

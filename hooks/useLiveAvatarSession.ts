@@ -66,21 +66,35 @@ function markMicrophoneAllowed(
   writeStoredMicGranted();
 }
 
-/**
- * Safari only shows the mic permission dialog for plain `{ audio: true }`
- * under a user gesture. HeyGen’s createLocalAudioTrack uses advanced
- * constraints that can fail as OverconstrainedError with NO dialog.
- * Call this first on Začať, then voiceChat.start() while permission is fresh.
- */
-async function requestMicPermissionUnderGesture(): Promise<void> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  stream.getTracks().forEach((t) => t.stop());
-}
-
 function micErrorDetail(err: unknown): string {
   if (!err || typeof err !== "object") return String(err);
   const e = err as { name?: string; message?: string };
   return [e.name, e.message].filter(Boolean).join(": ") || String(err);
+}
+
+function micPermissionHelpMessage(
+  language: string,
+  err: unknown,
+  perm: PermissionState | "unknown"
+): string {
+  const en = language === "en";
+  const detail = micErrorDetail(err);
+  const denied =
+    perm === "denied" ||
+    (err &&
+      typeof err === "object" &&
+      ((err as { name?: string }).name === "NotAllowedError" ||
+        (err as { name?: string }).name === "PermissionDeniedError"));
+
+  if (denied) {
+    return en
+      ? `Safari has blocked the microphone for this site — it will not show the prompt again. In the address bar open Website Settings (aA / lock icon) → Microphone → Allow, also check System Settings → Privacy & Security → Microphone → Safari. Then try again. (${detail || perm})`
+      : `Safari má pre túto stránku mikrofón zakázaný — dialóg sa preto nezobrazí. V paneli adresy otvorte Nastavenia pre túto webovú lokalitu (aA / zámok) → Mikrofón → Povoliť. Skontrolujte aj System Settings → Privacy & Security → Microphone → Safari. Potom skúste znova. (${detail || perm})`;
+  }
+
+  return en
+    ? `Couldn’t open the microphone (${detail || "unknown"}). Tap again and allow access if Safari asks.`
+    : `Nepodarilo sa otvoriť mikrofón (${detail || "neznáma chyba"}). Ťuknite znova a ak Safari vypýta prístup, povoľte ho.`;
 }
 
 export type LiveAvatarConfig = {
@@ -483,17 +497,19 @@ export function useLiveAvatarSession() {
   }, [clearMaxDurationTimer, stopSession]);
 
   /**
-   * Safari: voiceChat.start / track.unmute(restartTrack) need a user gesture.
-   * session.start() runs after await fetch — gesture is gone, so start often
-   * stays INACTIVE (isMuted === true forever; unmute is a no-op). Call this
-   * from Začať / Zapnúť clicks before any await delay.
+   * Safari: getUserMedia must be *started* in the click’s synchronous turn
+   * (pass micPromise from the button onClick). Then voiceChat.start publishes
+   * the LiveKit track (red URL-bar icon).
    */
   const ensureMicLiveUnderGesture = useCallback(
     async (
       session: SessionLike,
-      opts?: { /** After Ahoj / Zapnúť — open the turn counter. Default true. */
-        activateConversation?: boolean }
-    ) => {
+      opts?: {
+        activateConversation?: boolean;
+        /** Started synchronously in the click handler — do not create here. */
+        micPromise?: Promise<MediaStream>;
+      }
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
       const activate = opts?.activateConversation !== false;
       const gate = introGateRef.current;
       if (gate && activate) {
@@ -502,30 +518,45 @@ export function useLiveAvatarSession() {
       }
 
       const vc = session.voiceChat;
+      const fail = async (err: unknown, kind: "permission" | "voicechat") => {
+        setMicMuted(true);
+        const perm = await readMicrophonePermissionState();
+        if (kind === "permission") {
+          return {
+            ok: false as const,
+            message: micPermissionHelpMessage(languageRef.current, err, perm),
+          };
+        }
+        return {
+          ok: false as const,
+          message:
+            languageRef.current === "en"
+              ? `Microphone permission is OK, but the voice connection failed (${micErrorDetail(err) || vc.state}). Tap again.`
+              : `Mikrofón je povolený, ale hlasové pripojenie zlyhalo (${micErrorDetail(err) || vc.state}). Ťuknite znova.`,
+        };
+      };
 
-      // 1) Force Safari’s permission dialog (plain constraints, user gesture).
+      // 1) Resolve GUM started in the click handler (Safari permission dialog).
       try {
-        await requestMicPermissionUnderGesture();
+        const stream = await (opts?.micPromise ??
+          navigator.mediaDevices.getUserMedia({ audio: true }));
+        stream.getTracks().forEach((t) => t.stop());
         markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
       } catch (err) {
-        console.error("[LiveAvatar] getUserMedia permission failed", micErrorDetail(err));
-        setMicMuted(true);
-        return false;
+        console.error("[LiveAvatar] getUserMedia failed", micErrorDetail(err));
+        return fail(err, "permission");
       }
 
-      // 2) Immediately start LiveKit voice chat (red URL-bar icon).
+      // 2) LiveKit voice chat → red mic icon in the URL bar.
       try {
         if (vc.state !== "ACTIVE") {
-          console.info("[LiveAvatar] voiceChat.start under user gesture", {
-            prevState: vc.state,
-          });
+          console.info("[LiveAvatar] voiceChat.start", { prevState: vc.state });
           await vc.start({ defaultMuted: false });
         } else if (vc.isMuted) {
           await vc.unmute();
         }
       } catch (err) {
         console.error("[LiveAvatar] voiceChat.start failed", micErrorDetail(err));
-        // Permission is granted — one more try in the same click stack.
         try {
           if (vc.state !== "ACTIVE") {
             await vc.start({ defaultMuted: false });
@@ -534,17 +565,16 @@ export function useLiveAvatarSession() {
           }
         } catch (err2) {
           console.error("[LiveAvatar] voiceChat.start retry failed", micErrorDetail(err2));
+          return fail(err2, "voicechat");
         }
       }
 
-      // SDK start() can no-op without throwing when room is not connected.
       if (vc.state !== "ACTIVE") {
         console.error("[LiveAvatar] voiceChat still not ACTIVE", {
           state: vc.state,
           muted: vc.isMuted,
         });
-        setMicMuted(true);
-        return false;
+        return fail(new Error(`state=${vc.state}`), "voicechat");
       }
 
       try {
@@ -555,11 +585,12 @@ export function useLiveAvatarSession() {
 
       const muted = vc.isMuted;
       setMicMuted(muted);
-      if (!muted) {
-        markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
-        armMaxDurationTimer();
+      if (muted) {
+        return fail(new Error("muted after start"), "voicechat");
       }
-      return !muted;
+      markMicrophoneAllowed(micPermissionGrantedRef, setMicPermissionGranted);
+      armMaxDurationTimer();
+      return { ok: true };
     },
     [armMaxDurationTimer]
   );
@@ -575,12 +606,14 @@ export function useLiveAvatarSession() {
       session.voiceChat.state !== "ACTIVE" || session.voiceChat.isMuted;
 
     if (needsEnable) {
-      // Zapnúť must never no-op — restart voice chat under this click if needed.
-      await ensureMicLiveUnderGesture(session, { activateConversation: true });
+      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+      await ensureMicLiveUnderGesture(session, {
+        activateConversation: true,
+        micPromise,
+      });
       return;
     }
 
-    // Mute only when already live (do not block unmute behind introInProgress).
     if (introGateRef.current?.introInProgress) return;
     try {
       await session.voiceChat.mute();
@@ -1081,7 +1114,12 @@ export function useLiveAvatarSession() {
    * After disclaimer countdown / "start now": unlock audio, prime media,
    * then speak openingText (no warm-up utterance).
    */
-  const confirmReady = useCallback(async (): Promise<boolean> => {
+  /**
+   * @param micPromise Must be created with getUserMedia() in the button
+   * onClick’s synchronous turn so Safari can show the permission dialog.
+   */
+  const confirmReady = useCallback(
+    async (micPromise?: Promise<MediaStream>): Promise<boolean> => {
     const gate = introGateRef.current;
     const session = sessionRef.current;
     if (!gate || !session) {
@@ -1102,7 +1140,6 @@ export function useLiveAvatarSession() {
       return false;
     }
     if (gate.introStarted) {
-      // Previous attempt may have left the gate stuck — allow retry.
       gate.introStarted = false;
     }
 
@@ -1120,26 +1157,25 @@ export function useLiveAvatarSession() {
     debugLog("USER_READY_CONFIRMED", {
       sessionId: gate.sessionId,
       voiceChatState: session.voiceChat.state,
+      hasMicPromise: Boolean(micPromise),
     });
 
-    // First awaits under this click: plain getUserMedia (Safari dialog) →
-    // voiceChat.start (red URL-bar mic icon). Do not insert delays before this.
-    const micLive = await ensureMicLiveUnderGesture(session, {
+    const micResult = await ensureMicLiveUnderGesture(session, {
       activateConversation: false,
+      micPromise,
     });
     if (introGateRef.current !== gate || sessionRef.current !== session) {
       return abortConfirm(
         toHumanError("disconnect", undefined, languageRef.current)
       );
     }
-    if (!micLive) {
+    if (!micResult.ok) {
       console.error("[LiveAvatar] mic not live after Začať", {
         state: session.voiceChat.state,
         muted: session.voiceChat.isMuted,
+        message: micResult.message,
       });
-      return abortConfirm(
-        toHumanError("mic-denied", undefined, languageRef.current)
-      );
+      return abortConfirm(micResult.message);
     }
 
     setError(null);

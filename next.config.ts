@@ -31,6 +31,11 @@ const nextConfig: NextConfig = {
             key: "X-Robots-Tag",
             value: "noindex, nofollow, noarchive",
           },
+          {
+            // Explicitly allow mic for this origin (some Safari builds are strict).
+            key: "Permissions-Policy",
+            value: "microphone=(self)",
+          },
         ],
       },
     ];

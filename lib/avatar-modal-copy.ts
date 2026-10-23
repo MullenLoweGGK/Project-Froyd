@@ -35,7 +35,7 @@ const sk: ModalCopy = {
     "Nastavte si hlasitosť. Po štarte avatar krátko pozdraví — potom sa prihovorte vy.",
   readyEmphasis: "Počkajte, kým dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Ťuknite na „Začať rozhovor hneď“ a povoľte mikrofón, keď vás prehliadač vyzve.",
+    "Ťuknite „Povoliť mikrofón a začať“. Ak Safari dialóg nevypýta, v paneli adresy (aA / zámok) nastavte Mikrofón → Povoliť.",
   preparingTitle: "Pripravujeme zvuk…",
   preparingCopy: "Ešte chvíľu.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
