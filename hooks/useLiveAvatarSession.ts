@@ -117,6 +117,7 @@ type SessionLike = {
     /** INACTIVE | STARTING | ACTIVE — unmute is a no-op while INACTIVE */
     state: string;
     start: (config?: { defaultMuted?: boolean }) => Promise<void>;
+    stop: () => void;
     mute: () => Promise<void>;
     unmute: () => Promise<void>;
     on: (event: string, cb: (...args: never[]) => void) => void;
@@ -126,47 +127,73 @@ type SessionLike = {
 
 /**
  * Make voice chat ACTIVE + unmuted and tell the agent to listen.
- * Without startListening(), FULL-mode avatars often idle with video only
- * (especially when there is no scripted intro).
+ * Prefer soft unmute (no new getUserMedia). Use forceRestart only under a
+ * user click — Safari needs that gesture to recreate the mic track.
  */
-async function ensureVoiceChatListening(session: SessionLike): Promise<boolean> {
+async function ensureVoiceChatListening(
+  session: SessionLike,
+  opts: { forceRestart?: boolean } = {}
+): Promise<boolean> {
   const vc = session.voiceChat;
-  try {
-    if (vc.state !== "ACTIVE") {
-      await vc.start({ defaultMuted: false });
+  const startListeningSafe = () => {
+    try {
+      session.startListening();
+    } catch (err) {
+      debugLog("START_LISTENING_FAILED", err);
     }
-    if (vc.isMuted) {
-      await vc.unmute();
-    }
-  } catch (err) {
-    debugLog("VOICE_CHAT_START_FAILED", err);
+  };
+
+  if (!opts.forceRestart && vc.state === "ACTIVE" && !vc.isMuted) {
+    startListeningSafe();
+    return true;
   }
+
+  if (!opts.forceRestart && vc.state === "ACTIVE" && vc.isMuted) {
+    try {
+      await vc.unmute();
+    } catch (err) {
+      debugLog("VOICE_CHAT_UNMUTE_FAILED", err);
+    }
+    if (vc.state === "ACTIVE" && !vc.isMuted) {
+      startListeningSafe();
+      return true;
+    }
+  }
+
+  // Hard restart (manual click). Soft path failed or forceRestart requested.
+  try {
+    vc.stop();
+  } catch {
+    /* already stopped */
+  }
+
+  let probe: MediaStream | null = null;
+  try {
+    probe = await acquireMicrophoneStream();
+    await vc.start({ defaultMuted: false });
+  } catch (err) {
+    debugLog("VOICE_CHAT_RESTART_FAILED", err);
+    probe?.getTracks().forEach((t) => t.stop());
+    return false;
+  }
+  probe.getTracks().forEach((t) => t.stop());
 
   const deadline = Date.now() + 2500;
   while (Date.now() < deadline) {
     if (vc.state === "ACTIVE" && !vc.isMuted) break;
     try {
-      if (vc.state !== "ACTIVE") {
-        await vc.start({ defaultMuted: false });
-      }
-      if (vc.isMuted) {
-        await vc.unmute();
-      }
+      if (vc.isMuted) await vc.unmute();
     } catch {
       /* keep polling */
     }
     await new Promise((r) => window.setTimeout(r, 100));
   }
 
-  try {
-    session.startListening();
-  } catch (err) {
-    debugLog("START_LISTENING_FAILED", err);
-  }
-
+  startListeningSafe();
   const ok = vc.state === "ACTIVE" && !vc.isMuted;
   debugLog("VOICE_CHAT_LISTENING", {
     ok,
+    forceRestart: Boolean(opts.forceRestart),
     state: vc.state,
     muted: vc.isMuted,
   });
@@ -655,9 +682,11 @@ export function useLiveAvatarSession() {
           VoiceChatEvent,
         } = sdk;
 
-        // Start muted — we unmute after the ready gate (courses) / after intro (campaign).
+        // Courses: keep mic live from session.start (no second getUserMedia).
+        // Campaign: start muted until after the scripted intro.
+        const isCoursesSession = !config.openingText?.trim();
         const session = new LiveAvatarSession(sessionToken, {
-          voiceChat: { defaultMuted: true },
+          voiceChat: isCoursesSession ? {} : { defaultMuted: true },
           autoKeepAlive: true,
         });
         const sessionLike = session as unknown as SessionLike;
@@ -716,12 +745,33 @@ export function useLiveAvatarSession() {
           }
 
           gate.readyPromptShown = true;
-          debugLog("READY_GATE", { sessionId: gate.sessionId });
+          debugLog("READY_GATE", {
+            sessionId: gate.sessionId,
+            courses: isCoursesSession,
+            voiceState: sessionLike.voiceChat.state,
+            muted: sessionLike.voiceChat.isMuted,
+          });
 
-          try {
-            await sessionLike.voiceChat.mute();
-          } catch (err) {
-            debugLog("READY_GATE_MUTE_FAILED", err);
+          if (isCoursesSession) {
+            // Do NOT mute — Safari often can't recreate the mic track later.
+            try {
+              if (sessionLike.voiceChat.isMuted) {
+                await sessionLike.voiceChat.unmute();
+              }
+            } catch (err) {
+              debugLog("COURSES_READY_UNMUTE_FAILED", err);
+            }
+            try {
+              sessionLike.startListening();
+            } catch (err) {
+              debugLog("COURSES_READY_START_LISTENING_FAILED", err);
+            }
+          } else {
+            try {
+              await sessionLike.voiceChat.mute();
+            } catch (err) {
+              debugLog("READY_GATE_MUTE_FAILED", err);
+            }
           }
 
           if (videoRef.current) {
@@ -788,7 +838,9 @@ export function useLiveAvatarSession() {
 
         const activateConversation = async () => {
           gate.conversationActive = true;
-          const listening = await ensureVoiceChatListening(sessionLike);
+          const listening = await ensureVoiceChatListening(sessionLike, {
+            forceRestart: false,
+          });
           if (!listening) {
             debugLog("CONVERSATION_UNMUTE_FAILED", {
               state: sessionLike.voiceChat.state,
@@ -1100,10 +1152,17 @@ export function useLiveAvatarSession() {
       return false;
     }
 
-    // ── Courses: no intro — open listening under this click, then show ready ──
+    // ── Courses: no intro — soft unmute first, restart only if needed ──
     if (!gate.openingText) {
-      // First awaits under the click: publish mic + tell agent to listen.
-      const listening = await ensureVoiceChatListening(session);
+      let listening = await ensureVoiceChatListening(session, {
+        forceRestart: false,
+      });
+      if (!listening) {
+        // Manual click still has a user gesture — recreate the mic track.
+        listening = await ensureVoiceChatListening(session, {
+          forceRestart: true,
+        });
+      }
       debugLog("CONVERSATION_LIVE", {
         sessionId: gate.sessionId,
         listening,
@@ -1116,8 +1175,8 @@ export function useLiveAvatarSession() {
         setPreparingIntro(false);
         setError(
           lang === "en"
-            ? "Microphone is on in the browser, but the avatar isn’t receiving audio. Click “Start conversation” again."
-            : "Mikrofón v prehliadači je povolený, ale avatar vás nepočuje. Kliknite znova na „Začať rozhovor“."
+            ? "Couldn’t turn the microphone on for the avatar. Close this window, allow the mic on Spustiť, and try again."
+            : "Nepodarilo sa zapnúť mikrofón pre avatara. Zavrite okno, pri Spustiť povoľte mikrofón a skúste znova."
         );
         setStatus("awaiting-ready");
         return false;

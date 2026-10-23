@@ -38,9 +38,9 @@ const sk: ModalCopy = {
   readyEmphasis:
     "Hovorte prirodzene, ako na kurze. Počkajte, kým avatar dohovorí, a až potom pokračujte.",
   readyMicHint:
-    "Kliknite na tlačidlo nižšie. Ak prehliadač vypýta prístup k mikrofónu, povoľte ho a potom začnite hovoriť.",
-  preparingTitle: "Pripravujeme mikrofón…",
-  preparingCopy: "Ešte chvíľu — zapíname počúvanie.",
+    "Mikrofón sa zapne automaticky. Ak prehliadač vypýta prístup, povoľte ho už pri Spustiť — potom môžete hneď hovoriť.",
+  preparingTitle: "Zapíname počúvanie…",
+  preparingCopy: "Ešte chvíľu.",
   questionLimitStatus: "Limit otázok — rozhovor môžete ukončiť",
   micOn: " · Mikrofón zapnutý",
   micOff: " · Mikrofón stlmený",
@@ -90,9 +90,9 @@ const en: ModalCopy = {
   readyEmphasis:
     "Speak naturally. Wait until the avatar finishes before continuing.",
   readyMicHint:
-    "Click the button below. If the browser asks for microphone access, allow it, then start speaking.",
-  preparingTitle: "Preparing microphone…",
-  preparingCopy: "One moment — enabling listening.",
+    "The microphone turns on automatically. If the browser asks for access, allow it on Start — then speak.",
+  preparingTitle: "Enabling listening…",
+  preparingCopy: "One moment.",
   questionLimitStatus: "Question limit — you can end the conversation",
   micOn: " · Microphone on",
   micOff: " · Microphone muted",

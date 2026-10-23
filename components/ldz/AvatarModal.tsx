@@ -13,6 +13,8 @@ import { AiSimulationLabel } from "@/components/ldz/AiSimulationLabel";
 import { froydContent } from "@/lib/ldz-content";
 
 const READY_COUNTDOWN_MS = 30_000;
+/** Courses: short pause on the disclaimer, then auto-enable listening (mic already live). */
+const COURSES_AUTO_START_MS = 1_200;
 
 type Props = {
   scenario: AvatarScenario;
@@ -85,21 +87,24 @@ export function AvatarModal({
   const awaitingReady = status === "awaiting-ready" && !preparingIntro;
   const isCoursesFlow = !session.openingText;
 
-  // Campaign only: auto-start after strip when mic was granted on "Spustiť".
-  // Courses: never auto-start — mic+unmute must stay on the button click.
+  // Auto-start when mic was already granted on "Spustiť":
+  // - Courses: ~1.2s after disclaimer (mic stays live from session.start)
+  // - Campaign: 30s countdown strip
   useEffect(() => {
     if (!awaitingReady) {
       readyStartedRef.current = false;
       return;
     }
-    if (isCoursesFlow) return;
     if (!micPermissionGranted) return;
 
+    const delay = isCoursesFlow ? COURSES_AUTO_START_MS : READY_COUNTDOWN_MS;
     const timer = window.setTimeout(() => {
       if (readyStartedRef.current) return;
       readyStartedRef.current = true;
-      void confirmReady();
-    }, READY_COUNTDOWN_MS);
+      void confirmReady().then((ok) => {
+        if (!ok) readyStartedRef.current = false;
+      });
+    }, delay);
 
     return () => window.clearTimeout(timer);
   }, [awaitingReady, confirmReady, micPermissionGranted, isCoursesFlow]);
