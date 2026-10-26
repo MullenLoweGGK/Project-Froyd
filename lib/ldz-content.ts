@@ -22,7 +22,7 @@ export const froydContent = {
   infoCta: {
     challengeHeadline: "Nácvik citlivého rozhovoru",
     challengeParagraphs: [
-      "Toto prostredie je určené účastníkom kurzu Prvá pomoc pre dušu. S AI avatarmi si môžete bezpečne vyskúšať vedenie citlivého rozhovoru — skúšať, robiť chyby a pýtať sa bez strachu, že niekomu ublížite.",
+      "Toto prostredie je určené účastníkom kurzu Prvá pomoc pre duševné zdravie. S AI avatarmi si môžete bezpečne vyskúšať vedenie citlivého rozhovoru — skúšať, robiť chyby a pýtať sa bez strachu, že niekomu ublížite.",
       "Nie všetky duševné problémy sú viditeľné na prvý pohľad. Nácvik na simulácii vám pomôže všimnúť si signály a viesť rozhovor s väčšou istotou.",
     ],
     courseHeadline: "Ako na to",
